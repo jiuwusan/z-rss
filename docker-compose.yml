@@ -1,0 +1,29 @@
+services:
+  backend:
+    image: z-rss-backend:local
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+      target: runtime
+    init: true
+    restart: unless-stopped
+    environment:
+      NODE_ENV: production
+      PORT: 3000
+    ports:
+      - "${BACKEND_PORT:-3000}:3000"
+    healthcheck:
+      test:
+        - CMD
+        - node
+        - -e
+        - >-
+          fetch('http://127.0.0.1:3000/health')
+          .then((response) => {
+            if (!response.ok) process.exit(1);
+          })
+          .catch(() => process.exit(1));
+      interval: 10s
+      timeout: 3s
+      retries: 5
+      start_period: 10s
