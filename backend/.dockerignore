@@ -1,0 +1,13 @@
+node_modules
+tests
+support
+coverage
+.env
+.env.*
+*.log
+npm-debug.log*
+.git
+.gitignore
+.editorconfig
+.prettierrc*
+README.md
