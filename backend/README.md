@@ -45,3 +45,37 @@ npm test
 - `middlewares/`：处理跨请求逻辑。
 - `utils/`：提供无状态通用方法。
 - `config/`：集中管理环境配置。
+
+## Docker Compose 部署
+
+Docker Compose 命令在仓库根目录执行。
+
+复制环境变量示例并按需修改主机端口：
+
+```bash
+cp .env.example .env
+```
+
+构建并后台启动服务：
+
+```bash
+docker compose up -d --build
+```
+
+查看容器与健康状态：
+
+```bash
+docker compose ps
+```
+
+查看后端日志：
+
+```bash
+docker compose logs -f backend
+```
+
+停止并移除容器：
+
+```bash
+docker compose down
+```
