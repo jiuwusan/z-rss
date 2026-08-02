@@ -1,0 +1,19 @@
+{
+  "name": "z-rss-backend",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "start": "node src/server.js",
+    "dev": "node --watch src/server.js",
+    "test": "node --test"
+  },
+  "dependencies": {
+    "@koa/router": "^15.7.0",
+    "dotenv": "^17.4.2",
+    "koa": "^3.2.1"
+  },
+  "devDependencies": {
+    "supertest": "^7.2.2"
+  }
+}
