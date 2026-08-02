@@ -6,7 +6,7 @@
   "scripts": {
     "start": "node src/server.js",
     "dev": "node --watch src/server.js",
-    "test": "node --test"
+    "test": "node --test --experimental-test-isolation=none"
   },
   "dependencies": {
     "@koa/router": "^15.7.0",

@@ -9,9 +9,10 @@ import {
 
 test('GET /health 返回统一格式的健康状态', async () => {
   const server = await startTestServer(createApp());
+  const testRequest = request(server).get('/health');
 
   try {
-    const response = await request(server).get('/health');
+    const response = await testRequest;
 
     assert.equal(response.status, 200);
     assert.equal(response.body.code, 0);
@@ -21,6 +22,7 @@ test('GET /health 返回统一格式的健康状态', async () => {
     assert.equal(Number.isNaN(Date.parse(response.body.data.timestamp)), false);
     assert.equal(typeof response.body.data.uptime, 'number');
   } finally {
+    testRequest.req?.destroy();
     await stopTestServer(server);
   }
 });

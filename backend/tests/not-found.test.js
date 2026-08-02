@@ -9,9 +9,10 @@ import {
 
 test('未知路由返回统一格式的 404 响应', async () => {
   const server = await startTestServer(createApp());
+  const testRequest = request(server).get('/unknown');
 
   try {
-    const response = await request(server).get('/unknown');
+    const response = await testRequest;
 
     assert.equal(response.status, 404);
     assert.deepEqual(response.body, {
@@ -20,6 +21,7 @@ test('未知路由返回统一格式的 404 响应', async () => {
       data: null,
     });
   } finally {
+    testRequest.req?.destroy();
     await stopTestServer(server);
   }
 });
