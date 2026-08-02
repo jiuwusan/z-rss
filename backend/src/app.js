@@ -1,4 +1,5 @@
 import Koa from 'koa';
+import { errorMiddleware } from './middlewares/error.middleware.js';
 import router from './routes/index.js';
 import { createErrorResponse } from './utils/response.util.js';
 
@@ -9,6 +10,7 @@ import { createErrorResponse } from './utils/response.util.js';
 export function createApp() {
   const app = new Koa();
 
+  app.use(errorMiddleware);
   app.use(router.routes());
   app.use(router.allowedMethods());
   app.use(async (ctx) => {
