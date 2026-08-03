@@ -73,3 +73,66 @@ test('平台 CRUD 校验字段、协议和不存在状态', async () => {
     await rm(fixture.dataDirectory, { recursive: true, force: true });
   }
 });
+
+test('同目录的服务实例并发创建不同平台时保留全部平台', async () => {
+  const dataDirectory = await mkdtemp(path.join(tmpdir(), 'z-rss-service-'));
+  const firstService = createRssService({
+    repository: createRssRepository({ dataDirectory }),
+  });
+  const secondService = createRssService({
+    repository: createRssRepository({ dataDirectory }),
+  });
+
+  try {
+    await Promise.all([
+      firstService.createPlatform({
+        platform: 'HDSKY',
+        rss: 'https://example.com/hdsky.xml',
+      }),
+      secondService.createPlatform({
+        platform: 'HHCLUB',
+        rss: 'https://example.com/hhclub.xml',
+      }),
+    ]);
+
+    assert.deepEqual(
+      (await firstService.listPlatforms()).map((item) => item.platform).sort(),
+      ['HDSKY', 'HHCLUB'],
+    );
+  } finally {
+    await rm(dataDirectory, { recursive: true, force: true });
+  }
+});
+
+test('同目录的服务实例并发创建大小写不同的平台时只允许一个成功', async () => {
+  const dataDirectory = await mkdtemp(path.join(tmpdir(), 'z-rss-service-'));
+  const firstService = createRssService({
+    repository: createRssRepository({ dataDirectory }),
+  });
+  const secondService = createRssService({
+    repository: createRssRepository({ dataDirectory }),
+  });
+
+  try {
+    const results = await Promise.allSettled([
+      firstService.createPlatform({
+        platform: 'HDSKY',
+        rss: 'https://example.com/hdsky.xml',
+      }),
+      secondService.createPlatform({
+        platform: 'hdsky',
+        rss: 'https://example.com/duplicate.xml',
+      }),
+    ]);
+
+    assert.equal(results.filter((result) => result.status === 'fulfilled').length, 1);
+    assert.equal(
+      results.filter(
+        (result) => result.status === 'rejected' && result.reason.status === 409,
+      ).length,
+      1,
+    );
+  } finally {
+    await rm(dataDirectory, { recursive: true, force: true });
+  }
+});

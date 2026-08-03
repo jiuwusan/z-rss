@@ -1,6 +1,8 @@
 import { createRssRepository } from '../repositories/rss.repository.js';
 import { createHttpError } from '../utils/http-error.util.js';
 
+let writeQueue = Promise.resolve();
+
 function normalizePlatformKey(platform) {
   return platform.trim().toLowerCase();
 }
@@ -35,8 +37,6 @@ function validateRssUrl(value) {
  * @param {{ repository?: ReturnType<typeof createRssRepository> }} options 依赖
  */
 export function createRssService({ repository = createRssRepository() } = {}) {
-  let writeQueue = Promise.resolve();
-
   async function withWriteLock(operation) {
     const previousWrite = writeQueue;
     let releaseWrite;
