@@ -37,14 +37,30 @@ npm test
 
 - `GET /health`：返回服务状态、当前时间和进程运行时长。
 
+## RSS 接口
+
+- `GET /rss/platforms`：查询订阅平台。
+- `POST /rss/platforms`：新增订阅平台。
+- `PUT /rss/platforms/:platform`：修改平台 RSS 地址。
+- `DELETE /rss/platforms/:platform`：删除平台及对应缓存。
+- `POST /rss/cache/refresh`：主动拉取全部平台并刷新缓存。
+- `GET /rss/items`：读取按发布时间倒序排列的全部缓存条目。
+
+运行数据保存在 `data/platforms.json` 和 `data/rss-cache.json`。聚合查询只读取本地缓存，不会实时请求外部 RSS。
+
+Docker Compose 使用 `rss-data` 命名卷挂载 `/app/data`。普通 `docker compose down` 不删除数据；执行 `docker compose down -v` 会删除平台配置和 RSS 缓存，请谨慎使用。
+
 ## 目录职责
 
 - `routes/`：声明请求方法与路径。
 - `controllers/`：处理请求上下文并组织响应。
 - `services/`：承载业务逻辑，不依赖 Koa 上下文。
+- `repositories/`：读取并原子写入本地 JSON 数据文件。
+- `parsers/`：校验 RSS XML 并提取聚合条目。
 - `middlewares/`：处理跨请求逻辑。
 - `utils/`：提供无状态通用方法。
 - `config/`：集中管理环境配置。
+- `data/`：保存订阅平台和 RSS 聚合缓存。
 
 ## Docker Compose 部署
 
