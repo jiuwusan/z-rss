@@ -9,8 +9,10 @@
     "test": "node --test --experimental-test-isolation=none"
   },
   "dependencies": {
+    "@koa/bodyparser": "^6.1.0",
     "@koa/router": "^15.7.0",
     "dotenv": "^17.4.2",
+    "fast-xml-parser": "^5.10.1",
     "koa": "^3.2.1"
   },
   "devDependencies": {
