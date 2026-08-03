@@ -136,3 +136,150 @@ test('同目录的服务实例并发创建大小写不同的平台时只允许�
     await rm(dataDirectory, { recursive: true, force: true });
   }
 });
+
+test('刷新成功平台并保留失败平台旧缓存', async () => {
+  const fixture = await createServiceFixture();
+  const successXml = '<rss><channel><item><title>新条目</title><link>https://example.com/new</link><pubDate>Thu, 26 Mar 2026 16:35:43 +0800</pubDate></item></channel></rss>';
+  const fetchImpl = async (url) => {
+    if (url.includes('success')) return new Response(successXml, { status: 200 });
+    return new Response('failed', { status: 503 });
+  };
+  const service = createRssService({ repository: fixture.repository, fetchImpl });
+
+  try {
+    await fixture.repository.savePlatforms([
+      { platform: 'SUCCESS', rss: 'https://example.com/success' },
+      { platform: 'FAILED', rss: 'https://example.com/failure' },
+    ]);
+    await fixture.repository.saveItems([
+      { platform: 'SUCCESS', title: '旧成功', link: '', pubDate: '', xml: '<item />' },
+      { platform: 'FAILED', title: '保留条目', link: '', pubDate: '', xml: '<item />' },
+    ]);
+
+    const result = await service.refreshCache();
+    const items = await fixture.repository.listItems();
+
+    assert.deepEqual(
+      { total: result.total, success: result.success, failed: result.failed },
+      { total: 2, success: 1, failed: 1 },
+    );
+    assert.equal(items.some((item) => item.title === '新条目'), true);
+    assert.equal(items.some((item) => item.title === '旧成功'), false);
+    assert.equal(items.some((item) => item.title === '保留条目'), true);
+  } finally {
+    await rm(fixture.dataDirectory, { recursive: true, force: true });
+  }
+});
+
+test('有效空 RSS 清空平台缓存且聚合列表按日期倒序', async () => {
+  const fixture = await createServiceFixture();
+  const service = createRssService({
+    repository: fixture.repository,
+    fetchImpl: async () => new Response('<rss><channel /></rss>', { status: 200 }),
+  });
+
+  try {
+    await fixture.repository.savePlatforms([
+      { platform: 'EMPTY', rss: 'https://example.com/empty' },
+    ]);
+    await fixture.repository.saveItems([
+      { platform: 'EMPTY', title: '待清空', link: '', pubDate: '', xml: '<item />' },
+      { platform: 'OTHER', title: '较早', link: '', pubDate: '2026-01-01T00:00:00Z', xml: '<item />' },
+      { platform: 'OTHER', title: '无日期', link: '', pubDate: 'invalid', xml: '<item />' },
+      { platform: 'OTHER', title: '较晚', link: '', pubDate: '2026-03-01T00:00:00Z', xml: '<item />' },
+    ]);
+
+    await service.refreshCache();
+    assert.deepEqual(
+      (await service.listItems()).map((item) => item.title),
+      ['较晚', '较早', '无日期'],
+    );
+  } finally {
+    await rm(fixture.dataDirectory, { recursive: true, force: true });
+  }
+});
+
+test('刷新执行期间重复刷新返回 409', async () => {
+  const fixture = await createServiceFixture();
+  let releaseFetch;
+  let signalFetchStarted;
+  const fetchStarted = new Promise((resolve) => {
+    signalFetchStarted = resolve;
+  });
+  const fetchImpl = () => new Promise((resolve) => {
+    releaseFetch = () => resolve(new Response('<rss><channel /></rss>'));
+    signalFetchStarted();
+  });
+  const service = createRssService({ repository: fixture.repository, fetchImpl });
+
+  try {
+    await fixture.repository.savePlatforms([
+      { platform: 'WAIT', rss: 'https://example.com/wait' },
+    ]);
+    const firstRefresh = service.refreshCache();
+    await fetchStarted;
+    await assert.rejects(() => service.refreshCache(), (error) => error.status === 409);
+    releaseFetch();
+    await firstRefresh;
+  } finally {
+    await rm(fixture.dataDirectory, { recursive: true, force: true });
+  }
+});
+
+test('不同服务实例之间的重复刷新返回 409', async () => {
+  const fixture = await createServiceFixture();
+  let releaseFetch;
+  let signalFetchStarted;
+  const fetchStarted = new Promise((resolve) => {
+    signalFetchStarted = resolve;
+  });
+  const firstService = createRssService({
+    repository: fixture.repository,
+    fetchImpl: () => new Promise((resolve) => {
+      releaseFetch = () => resolve(new Response('<rss><channel /></rss>'));
+      signalFetchStarted();
+    }),
+  });
+  const secondService = createRssService({ repository: fixture.repository });
+
+  try {
+    await fixture.repository.savePlatforms([
+      { platform: 'WAIT', rss: 'https://example.com/wait' },
+    ]);
+    const firstRefresh = firstService.refreshCache();
+    await fetchStarted;
+    await assert.rejects(() => secondService.refreshCache(), (error) => error.status === 409);
+    releaseFetch();
+    await firstRefresh;
+  } finally {
+    await rm(fixture.dataDirectory, { recursive: true, force: true });
+  }
+});
+
+test('RSS 请求超时只标记当前平台失败并保留旧缓存', async () => {
+  const fixture = await createServiceFixture();
+  const fetchImpl = (_url, { signal }) => new Promise((resolve, reject) => {
+    signal.addEventListener('abort', () => reject(signal.reason), { once: true });
+  });
+  const service = createRssService({
+    repository: fixture.repository,
+    fetchImpl,
+    requestTimeoutMs: 10,
+  });
+
+  try {
+    await fixture.repository.savePlatforms([
+      { platform: 'TIMEOUT', rss: 'https://example.com/timeout' },
+    ]);
+    await fixture.repository.saveItems([
+      { platform: 'TIMEOUT', title: '旧缓存', link: '', pubDate: '', xml: '<item />' },
+    ]);
+
+    const result = await service.refreshCache();
+    assert.equal(result.results[0].status, 'failed');
+    assert.equal(result.results[0].message, 'RSS 请求超时');
+    assert.equal((await fixture.repository.listItems())[0].title, '旧缓存');
+  } finally {
+    await rm(fixture.dataDirectory, { recursive: true, force: true });
+  }
+});
