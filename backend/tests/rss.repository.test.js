@@ -67,3 +67,23 @@ test('并发初始化与保存不会覆盖已保存的平台数据', async () =>
     await rm(dataDirectory, { recursive: true, force: true });
   }
 });
+
+test('同目录仓储实例并发初始化与保存不会覆盖已保存的平台数据', async () => {
+  const dataDirectory = await mkdtemp(path.join(tmpdir(), 'z-rss-repository-'));
+  const readerRepository = createRssRepository({ dataDirectory });
+  const writerRepository = createRssRepository({ dataDirectory });
+  const platforms = [
+    { platform: 'HHCLUB', rss: 'https://example.com/hhclub.xml' },
+  ];
+
+  try {
+    const initialization = readerRepository.listPlatforms();
+    const saving = writerRepository.savePlatforms(platforms);
+
+    await Promise.all([initialization, saving]);
+
+    assert.deepEqual(await readerRepository.listPlatforms(), platforms);
+  } finally {
+    await rm(dataDirectory, { recursive: true, force: true });
+  }
+});

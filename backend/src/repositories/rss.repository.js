@@ -6,6 +6,7 @@ import { fileURLToPath } from 'node:url';
 const DEFAULT_DATA_DIRECTORY = fileURLToPath(
   new URL('../../data/', import.meta.url),
 );
+const writeQueues = new Map();
 
 async function writeJsonAtomically(filePath, data) {
   await mkdir(path.dirname(filePath), { recursive: true });
@@ -44,6 +45,20 @@ async function readJsonArray(filePath, enqueueWrite) {
   return value;
 }
 
+function getWriteQueue(dataDirectory) {
+  const normalizedDirectory = path.resolve(dataDirectory);
+
+  if (!writeQueues.has(normalizedDirectory)) {
+    writeQueues.set(normalizedDirectory, Promise.resolve());
+  }
+
+  return (operation) => {
+    const queuedOperation = writeQueues.get(normalizedDirectory).then(operation);
+    writeQueues.set(normalizedDirectory, queuedOperation.catch(() => {}));
+    return queuedOperation;
+  };
+}
+
 /**
  * 创建 RSS JSON 文件仓储。
  * @param {{ dataDirectory?: string }} options 仓储选项
@@ -53,13 +68,7 @@ export function createRssRepository({
 } = {}) {
   const platformsPath = path.join(dataDirectory, 'platforms.json');
   const cachePath = path.join(dataDirectory, 'rss-cache.json');
-  let writeQueue = Promise.resolve();
-
-  function enqueueWrite(operation) {
-    const queuedOperation = writeQueue.then(operation);
-    writeQueue = queuedOperation.catch(() => {});
-    return queuedOperation;
-  }
+  const enqueueWrite = getWriteQueue(dataDirectory);
 
   return {
     listPlatforms: () => readJsonArray(platformsPath, enqueueWrite),
