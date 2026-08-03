@@ -123,6 +123,11 @@ export function createRssService({
         signal: requestController.signal,
       });
       if (!response.ok) {
+        try {
+          await response.body?.cancel();
+        } catch {
+          // 响应体释放失败不应改变平台级刷新结果或泄漏内部错误。
+        }
         return {
           result: {
             platform: platform.platform,

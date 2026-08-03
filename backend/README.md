@@ -46,6 +46,8 @@ npm test
 - `POST /rss/cache/refresh`：主动拉取全部平台并刷新缓存。
 - `GET /rss/items`：读取按发布时间倒序排列的全部缓存条目。
 
+> 安全提示：RSS 管理与刷新接口必须限制在可信网络或可信用户范围内；未配置认证与 SSRF 防护时，不得直接公开暴露。
+
 运行数据保存在 `data/platforms.json` 和 `data/rss-cache.json`。聚合查询只读取本地缓存，不会实时请求外部 RSS。
 
 Docker Compose 使用 `rss-data` 命名卷挂载 `/app/data`。普通 `docker compose down` 不删除数据；执行 `docker compose down -v` 会删除平台配置和 RSS 缓存，请谨慎使用。

@@ -171,6 +171,38 @@ test('刷新成功平台并保留失败平台旧缓存', async () => {
   }
 });
 
+test('非成功 HTTP 响应会取消响应体且忽略取消失败', async () => {
+  const fixture = await createServiceFixture();
+  let isResponseBodyCanceled = false;
+  const responseBody = new ReadableStream({
+    cancel() {
+      isResponseBodyCanceled = true;
+      throw new Error('包含敏感信息的取消失败');
+    },
+  });
+  const service = createRssService({
+    repository: fixture.repository,
+    fetchImpl: async () => new Response(responseBody, { status: 503 }),
+  });
+
+  try {
+    await fixture.repository.savePlatforms([
+      { platform: 'FAILED', rss: 'https://example.com/failure' },
+    ]);
+
+    const result = await service.refreshCache();
+
+    assert.equal(isResponseBodyCanceled, true);
+    assert.deepEqual(result.results[0], {
+      platform: 'FAILED',
+      status: 'failed',
+      message: 'RSS 请求返回 HTTP 503',
+    });
+  } finally {
+    await rm(fixture.dataDirectory, { recursive: true, force: true });
+  }
+});
+
 test('有效空 RSS 清空平台缓存且聚合列表按日期倒序', async () => {
   const fixture = await createServiceFixture();
   const service = createRssService({
