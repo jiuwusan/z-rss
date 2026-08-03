@@ -48,3 +48,22 @@ test('损坏 JSON 会抛错且不会被静默覆盖', async () => {
     await rm(dataDirectory, { recursive: true, force: true });
   }
 });
+
+test('并发初始化与保存不会覆盖已保存的平台数据', async () => {
+  const dataDirectory = await mkdtemp(path.join(tmpdir(), 'z-rss-repository-'));
+  const repository = createRssRepository({ dataDirectory });
+  const platforms = [
+    { platform: 'HDSKY', rss: 'https://example.com/rss.xml' },
+  ];
+
+  try {
+    const initialization = repository.listPlatforms();
+    const saving = repository.savePlatforms(platforms);
+
+    await Promise.all([initialization, saving]);
+
+    assert.deepEqual(await repository.listPlatforms(), platforms);
+  } finally {
+    await rm(dataDirectory, { recursive: true, force: true });
+  }
+});

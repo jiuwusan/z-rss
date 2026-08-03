@@ -19,17 +19,24 @@ async function writeJsonAtomically(filePath, data) {
   }
 }
 
-async function ensureJsonFile(filePath) {
+async function ensureJsonFile(filePath, enqueueWrite) {
   try {
     await access(filePath);
   } catch (error) {
     if (error.code !== 'ENOENT') throw error;
-    await writeJsonAtomically(filePath, []);
+    await enqueueWrite(async () => {
+      try {
+        await access(filePath);
+      } catch (queuedError) {
+        if (queuedError.code !== 'ENOENT') throw queuedError;
+        await writeJsonAtomically(filePath, []);
+      }
+    });
   }
 }
 
-async function readJsonArray(filePath) {
-  await ensureJsonFile(filePath);
+async function readJsonArray(filePath, enqueueWrite) {
+  await ensureJsonFile(filePath, enqueueWrite);
   const value = JSON.parse(await readFile(filePath, 'utf8'));
   if (!Array.isArray(value)) {
     throw new TypeError(`数据文件必须包含 JSON 数组：${path.basename(filePath)}`);
@@ -46,11 +53,22 @@ export function createRssRepository({
 } = {}) {
   const platformsPath = path.join(dataDirectory, 'platforms.json');
   const cachePath = path.join(dataDirectory, 'rss-cache.json');
+  let writeQueue = Promise.resolve();
+
+  function enqueueWrite(operation) {
+    const queuedOperation = writeQueue.then(operation);
+    writeQueue = queuedOperation.catch(() => {});
+    return queuedOperation;
+  }
 
   return {
-    listPlatforms: () => readJsonArray(platformsPath),
-    savePlatforms: (platforms) => writeJsonAtomically(platformsPath, platforms),
-    listItems: () => readJsonArray(cachePath),
-    saveItems: (items) => writeJsonAtomically(cachePath, items),
+    listPlatforms: () => readJsonArray(platformsPath, enqueueWrite),
+    savePlatforms: (platforms) => enqueueWrite(
+      () => writeJsonAtomically(platformsPath, platforms),
+    ),
+    listItems: () => readJsonArray(cachePath, enqueueWrite),
+    saveItems: (items) => enqueueWrite(
+      () => writeJsonAtomically(cachePath, items),
+    ),
   };
 }
