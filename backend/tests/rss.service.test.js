@@ -283,3 +283,28 @@ test('RSS 请求超时只标记当前平台失败并保留旧缓存', async () =
     await rm(fixture.dataDirectory, { recursive: true, force: true });
   }
 });
+
+test('聚合列表只返回公开字段', async () => {
+  const fixture = await createServiceFixture();
+
+  try {
+    await fixture.repository.saveItems([
+      {
+        platform: 'LEGACY',
+        title: '历史条目',
+        link: 'https://example.com/legacy',
+        pubDate: '2026-03-01T00:00:00Z',
+        xml: '<item />',
+        legacyField: '不应泄漏',
+      },
+    ]);
+
+    const [item] = await fixture.service.listItems();
+    assert.deepEqual(
+      Object.keys(item),
+      ['platform', 'title', 'link', 'pubDate', 'xml'],
+    );
+  } finally {
+    await rm(fixture.dataDirectory, { recursive: true, force: true });
+  }
+});

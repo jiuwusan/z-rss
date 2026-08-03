@@ -199,7 +199,14 @@ export function createRssService({
 
   async function listItems() {
     const items = await repository.listItems();
-    return items.sort((left, right) => {
+    const publicItems = items.map((item) => ({
+      platform: item.platform,
+      title: item.title,
+      link: item.link,
+      pubDate: item.pubDate,
+      xml: item.xml,
+    }));
+    return publicItems.sort((left, right) => {
       const leftTimestamp = Date.parse(left.pubDate);
       const rightTimestamp = Date.parse(right.pubDate);
       const isLeftValid = Number.isFinite(leftTimestamp);
