@@ -1,0 +1,3 @@
+（1）"prds\rss 订阅示例\platforms.json" 是订阅源数据模型，可以增删改查
+（2）"prds\rss 订阅示例\RSS样例" 下的文件是rss链接订阅返回的结果,外部通过cron定时调用更新本地缓存，或者在页面上点击更新按钮
+（3）添加接口，处理订阅结果，提取<item>的数据为object json，并合并所有平台的item为list
