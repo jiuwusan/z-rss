@@ -1,0 +1,10 @@
+[
+  {
+    "platform": "HDSKY",
+    "rss": "https://cloud.jiuwusan.cn:36443/rss/hdsky-rss.xml"
+  },
+  {
+    "platform": "HHCLUB",
+    "rss": "https://cloud.jiuwusan.cn:36443/rss/hhclub-rss.xml"
+  }
+]
