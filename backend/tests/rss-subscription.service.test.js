@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict';
-import { mkdtemp, rm } from 'node:fs/promises';
+import { mkdtemp, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import test from 'node:test';
@@ -10,13 +10,52 @@ import {
 } from '../src/services/rss-subscription.service.js';
 import { sortRssItems } from '../src/utils/rss-item.util.js';
 
+const TEMPLATE_XML = `<?xml version="1.0" encoding="utf-8"?>
+<rss version="2.0">
+    <channel>
+        <title>Cloud Jiuwusan Torrents</title>
+        <link>
+            <![CDATA[https://cloud.jiuwusan.cn]]>
+        </link>
+        <description>
+            <![CDATA[Latest torrents from Jiuwusan - 自定义 RSS 订阅]]>
+        </description>
+        <language>zh-cn</language>
+        <copyright>Copyright (c) Jiuwusan 2013-2026, all rights reserved</copyright>
+        <managingEditor>admin@jiuwusan.cn (Jiuwusan Admin)</managingEditor>
+        <webMaster>admin@jiuwusan.cn (Jiuwusan Webmaster)</webMaster>
+        <pubDate>Thu, 26 Mar 2026 17:10:59 +0800</pubDate>
+        <generator>NexusPHP RSS Generator</generator>
+        <docs>
+            <![CDATA[http://www.rssboard.org/rss-specification]]>
+        </docs>
+        <ttl>60</ttl>
+        <image>
+            <url>
+                <![CDATA[https://cloud.jiuwusan.cn/pic/rss_logo.jpg]]>
+            </url>
+            <title>Cloud Jiuwusan Torrents</title>
+            <link>
+                <![CDATA[https://cloud.jiuwusan.cn]]>
+            </link>
+            <width>100</width>
+            <height>100</height>
+            <description>Cloud Jiuwusan Torrents</description>
+        </image>
+        <!-- 在这里插入 item 标签内容 -->
+    </channel>
+</rss>`;
+
 async function createServiceFixture(createId = () => 'rule-1') {
   const dataDirectory = await mkdtemp(path.join(tmpdir(), 'z-rss-subscription-'));
   const repository = createRssRepository({ dataDirectory });
+  const templatePath = path.join(dataDirectory, 'subscription.xml');
+  await writeFile(templatePath, TEMPLATE_XML, 'utf8');
   return {
     dataDirectory,
     repository,
-    service: createRssSubscriptionService({ repository, createId }),
+    templatePath,
+    service: createRssSubscriptionService({ repository, createId, templatePath }),
   };
 }
 
@@ -238,4 +277,97 @@ test('RSS 条目排序保持同日期和无效日期的原始相对顺序', () =
     sortRssItems(items).map((item) => item.title),
     ['较晚', '同日期一', '同日期二', '无效日期一', '无效日期二'],
   );
+});
+
+test('订阅生成保留原始 item XML 并按规则输出匹配条目', async () => {
+  const fixture = await createServiceFixture();
+
+  try {
+    await fixture.repository.saveItems([
+      {
+        platform: 'A',
+        title: '较早 2160p DV',
+        pubDate: '2026-03-01T00:00:00Z',
+        xml: '<item><title>较早 2160p DV</title><enclosure url="https://example.com/download?passkey=excluded" length="2" type="application/x-bittorrent"/><guid isPermaLink="false">guid-2</guid></item>',
+      },
+      {
+        platform: 'A',
+        title: '较晚 2160P WEB-DL',
+        pubDate: '2026-03-02T00:00:00Z',
+        xml: '<item><title>较晚 2160P WEB-DL</title><enclosure url="https://example.com/download?passkey=secret" length="1" type="application/x-bittorrent"/><guid isPermaLink="false">guid-1</guid></item>',
+      },
+    ]);
+    await fixture.repository.saveRules([
+      { id: 'rule-1', mustInclude: '2160p', mustExclude: 'DV' },
+    ]);
+
+    const xml = await fixture.service.buildSubscription('matched');
+
+    assert.match(xml, /^<\?xml version="1\.0" encoding="utf-8"\?>/);
+    assert.match(xml, /<enclosure url="https:\/\/example\.com\/download\?passkey=secret"/);
+    assert.match(xml, /<guid isPermaLink="false">guid-1<\/guid>/);
+    assert.doesNotMatch(xml, /在这里插入 item 标签内容/);
+    assert.equal(xml.indexOf('较晚'), xml.lastIndexOf('较晚'));
+    assert.doesNotMatch(xml, /较早 2160p DV/);
+  } finally {
+    await rm(fixture.dataDirectory, { recursive: true, force: true });
+  }
+});
+
+test('空命中订阅保留 RSS 和 channel 母版且不输出 item', async () => {
+  const fixture = await createServiceFixture();
+
+  try {
+    await fixture.repository.saveItems([
+      {
+        platform: 'A',
+        title: '1080p WEB-DL',
+        pubDate: '2026-03-01T00:00:00Z',
+        xml: '<item><title>1080p WEB-DL</title></item>',
+      },
+    ]);
+    await fixture.repository.saveRules([
+      { id: 'rule-1', mustInclude: '2160p', mustExclude: '' },
+    ]);
+
+    const xml = await fixture.service.buildSubscription('matched');
+
+    assert.match(xml, /<rss\b/);
+    assert.match(xml, /<channel>/);
+    assert.doesNotMatch(xml, /<item>/);
+  } finally {
+    await rm(fixture.dataDirectory, { recursive: true, force: true });
+  }
+});
+
+test('订阅母版缺少唯一占位符时拒绝生成', async () => {
+  const fixture = await createServiceFixture();
+
+  try {
+    await writeFile(
+      fixture.templatePath,
+      '<rss><channel></channel></rss>',
+      'utf8',
+    );
+
+    await assert.rejects(
+      () => fixture.service.buildSubscription('matched'),
+      /RSS 订阅母版占位符无效/,
+    );
+  } finally {
+    await rm(fixture.dataDirectory, { recursive: true, force: true });
+  }
+});
+
+test('订阅类型仅允许 matched 和 unmatched', async () => {
+  const fixture = await createServiceFixture();
+
+  try {
+    await assert.rejects(
+      () => fixture.service.buildSubscription('unknown'),
+      (error) => error.status === 404,
+    );
+  } finally {
+    await rm(fixture.dataDirectory, { recursive: true, force: true });
+  }
 });

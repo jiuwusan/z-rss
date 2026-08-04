@@ -1,10 +1,16 @@
 import { randomUUID } from 'node:crypto';
+import { readFile } from 'node:fs/promises';
+import { fileURLToPath } from 'node:url';
 import { createRssRepository } from '../repositories/rss.repository.js';
 import { createHttpError } from '../utils/http-error.util.js';
 import { sortRssItems } from '../utils/rss-item.util.js';
 
 const MAX_RULES = 100;
 const MAX_PATTERN_LENGTH = 256;
+const DEFAULT_TEMPLATE_PATH = fileURLToPath(
+  new URL('../../templates/subscription.xml', import.meta.url),
+);
+const ITEM_PLACEHOLDER = '<!-- 在这里插入 item 标签内容 -->';
 let writeQueue = Promise.resolve();
 
 function validatePattern(value, fieldName, { required }) {
@@ -79,10 +85,8 @@ export function partitionItems(items, rules) {
 export function createRssSubscriptionService({
   repository = createRssRepository(),
   createId = randomUUID,
-  templatePath,
+  templatePath = DEFAULT_TEMPLATE_PATH,
 } = {}) {
-  void templatePath;
-
   async function withWriteLock(operation) {
     const previousWrite = writeQueue;
     let releaseWrite;
@@ -139,10 +143,28 @@ export function createRssSubscriptionService({
     });
   }
 
+  async function buildSubscription(kind) {
+    if (!['matched', 'unmatched'].includes(kind)) {
+      throw createHttpError(404, '订阅类型不存在');
+    }
+    const [items, rules, template] = await Promise.all([
+      repository.listItems(),
+      listRules(),
+      readFile(templatePath, 'utf8'),
+    ]);
+    if (template.split(ITEM_PLACEHOLDER).length !== 2) {
+      throw new Error('RSS 订阅母版占位符无效');
+    }
+    const partitioned = partitionItems(items, rules);
+    const itemXml = partitioned[kind].map((item) => item.xml).join('\n');
+    return template.replace(ITEM_PLACEHOLDER, itemXml);
+  }
+
   return {
     listRules,
     createRule,
     updateRule,
     deleteRule,
+    buildSubscription,
   };
 }
