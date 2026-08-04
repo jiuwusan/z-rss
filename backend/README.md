@@ -27,6 +27,10 @@ npm run dev
 npm start
 ```
 
+服务启动后访问 `http://localhost:3000/` 打开 RSS 管理台。页面使用原生 HTML、CSS 和 JavaScript 实现，可管理订阅平台、刷新全部缓存、查看聚合条目及原始 item XML。
+
+前端页面与 RSS API 由同一个 Koa 服务提供，浏览器只请求同源的 `/rss/*` 接口，不会直接访问外部 RSS 地址。聚合列表只读取服务端缓存。
+
 ## 测试
 
 ```bash
@@ -62,6 +66,7 @@ Docker Compose 使用 `rss-data` 命名卷挂载 `/app/data`。普通 `docker co
 - `middlewares/`：处理跨请求逻辑。
 - `utils/`：提供无状态通用方法。
 - `config/`：集中管理环境配置。
+- `public/`：保存 RSS 管理台的 HTML、CSS 和 JavaScript 静态资源。
 - `data/`：保存订阅平台和 RSS 聚合缓存。
 
 ## Docker Compose 部署
