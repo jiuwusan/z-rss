@@ -397,6 +397,10 @@ h2 {
   line-height: 1.6;
 }
 
+.refresh-result-title {
+  display: block;
+}
+
 .refresh-result-list {
   display: flex;
   flex-wrap: wrap;
@@ -604,6 +608,10 @@ h2 {
     opacity: 0;
     transform: translateY(8px);
   }
+}
+
+.button.is-busy {
+  cursor: wait;
 }
 
 @media (max-width: 960px) {

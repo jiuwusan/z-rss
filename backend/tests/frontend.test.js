@@ -50,3 +50,51 @@ test('前端纯函数提供稳定的缺省展示与刷新摘要', async () => {
     '已更新 2 个平台，1 个失败',
   );
 });
+
+test('前端 API client 使用约定的 RSS 接口和请求方法', async () => {
+  const { createApiClient } = await import('../public/app.js');
+  const calls = [];
+  const fetchImpl = async (url, options = {}) => {
+    calls.push({ url, options });
+    return new Response(
+      JSON.stringify({ code: 0, message: 'success', data: { ok: true } }),
+      { status: 200, headers: { 'content-type': 'application/json' } },
+    );
+  };
+  const api = createApiClient(fetchImpl);
+
+  await api.listPlatforms();
+  await api.listItems();
+  await api.createPlatform({ platform: 'A', rss: 'https://example.com/a.xml' });
+  await api.updatePlatform('A B', { rss: 'https://example.com/b.xml' });
+  await api.deletePlatform('A B');
+  await api.refreshCache();
+
+  assert.deepEqual(
+    calls.map(({ url, options }) => [url, options.method || 'GET']),
+    [
+      ['/rss/platforms', 'GET'],
+      ['/rss/items', 'GET'],
+      ['/rss/platforms', 'POST'],
+      ['/rss/platforms/A%20B', 'PUT'],
+      ['/rss/platforms/A%20B', 'DELETE'],
+      ['/rss/cache/refresh', 'POST'],
+    ],
+  );
+  assert.equal(
+    calls[2].options.body,
+    JSON.stringify({ platform: 'A', rss: 'https://example.com/a.xml' }),
+  );
+});
+
+test('前端 API client 优先抛出后端错误消息', async () => {
+  const { createApiClient } = await import('../public/app.js');
+  const api = createApiClient(async () =>
+    new Response(JSON.stringify({ code: 409, message: '缓存刷新正在进行' }), {
+      status: 409,
+      headers: { 'content-type': 'application/json' },
+    }),
+  );
+
+  await assert.rejects(() => api.refreshCache(), /缓存刷新正在进行/);
+});
