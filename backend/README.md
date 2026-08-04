@@ -49,10 +49,20 @@ npm test
 - `DELETE /rss/platforms/:platform`：删除平台及对应缓存。
 - `POST /rss/cache/refresh`：主动拉取全部平台并刷新缓存。
 - `GET /rss/items`：读取按发布时间倒序排列的全部缓存条目。
+- `GET /rss/rules`：查询 RSS 分流规则。
+- `POST /rss/rules`：新增 RSS 分流规则。
+- `PUT /rss/rules/:id`：修改指定 RSS 分流规则。
+- `DELETE /rss/rules/:id`：删除指定 RSS 分流规则。
+- `GET /rss/subscriptions/matched`：读取已匹配规则的 RSS 订阅。
+- `GET /rss/subscriptions/unmatched`：读取未匹配规则的 RSS 订阅。
 
-> 安全提示：RSS 管理与刷新接口必须限制在可信网络或可信用户范围内；未配置认证与 SSRF 防护时，不得直接公开暴露。
+规则接口使用统一 JSON 响应。创建和更新规则的请求体包含 `mustInclude`（必填）与 `mustExclude`（可选）；正则默认忽略大小写，无需填写 `/.../i`。单条规则中，标题必须匹配 `mustInclude` 且不得匹配 `mustExclude`；多条规则之间为 OR。没有规则时，`matched` 订阅为空，`unmatched` 订阅包含全部缓存条目。
 
-运行数据保存在 `data/platforms.json` 和 `data/rss-cache.json`。聚合查询只读取本地缓存，不会实时请求外部 RSS。
+两个订阅地址不带 `.xml` 后缀，均返回 `text/xml; charset=utf-8` 和 `Cache-Control: no-store`。它们只读取本地缓存，不会在订阅请求时拉取外部 RSS；匹配与未匹配条目互斥，且都按发布时间倒序排列。
+
+> 安全提示：RSS 管理、刷新和订阅接口均未配置鉴权。RSS item 可能携带 passkey 等下载凭据，无鉴权接口只能部署在可信网络或仅向可信用户开放；未配置认证与 SSRF 防护时，不得直接公开暴露。
+
+运行数据保存在 `data/platforms.json`、`data/rss-cache.json` 和 `data/rss-rules.json`：分别保存订阅平台、RSS 聚合缓存和分流规则。`templates/` 保存生成订阅 RSS 所需的 XML 母版。聚合查询与订阅查询只读取本地缓存，不会实时请求外部 RSS。
 
 Docker Compose 使用 `rss-data` 命名卷挂载 `/app/data`。普通 `docker compose down` 不删除数据；执行 `docker compose down -v` 会删除平台配置和 RSS 缓存，请谨慎使用。
 
@@ -67,7 +77,8 @@ Docker Compose 使用 `rss-data` 命名卷挂载 `/app/data`。普通 `docker co
 - `utils/`：提供无状态通用方法。
 - `config/`：集中管理环境配置。
 - `public/`：保存 RSS 管理台的 HTML、CSS 和 JavaScript 静态资源。
-- `data/`：保存订阅平台和 RSS 聚合缓存。
+- `templates/`：保存生成分流订阅所需的 RSS XML 母版。
+- `data/`：保存订阅平台、RSS 聚合缓存和分流规则。
 
 ## Docker Compose 部署
 
