@@ -114,6 +114,51 @@ export function createApiClient(fetchImpl = globalThis.fetch) {
   };
 }
 
+/**
+ * 管理规则保存期间的 dialog 锁定状态。
+ * @param {object} options 状态依赖
+ * @returns {object} 规则保存状态控制器
+ */
+export function createRuleSavingState({
+  closeButtons,
+  submitButton,
+  setButtonBusy,
+}) {
+  let isRuleSaving = false;
+  return {
+    get isRuleSaving() {
+      return isRuleSaving;
+    },
+    setSaving(isSaving) {
+      isRuleSaving = isSaving;
+      for (const button of closeButtons) {
+        button.disabled = isSaving;
+      }
+      setButtonBusy(submitButton, isSaving, '正在保存…');
+    },
+    handleCancel(event) {
+      if (isRuleSaving) event.preventDefault();
+    },
+  };
+}
+
+/**
+ * 并行加载管理台数据，并将规则错误限制在规则面板内。
+ * @param {object} loaders 数据加载方法
+ * @returns {Promise<unknown[]>}
+ */
+export function loadInitialDashboard({
+  loadPlatforms,
+  loadItems,
+  loadRules,
+  handleRulesLoadError,
+}) {
+  const platformsPromise = loadPlatforms();
+  const itemsPromise = loadItems();
+  const rulesPromise = loadRules().catch(handleRulesLoadError);
+  return Promise.all([platformsPromise, itemsPromise, rulesPromise]);
+}
+
 function createElement(tagName, className, text) {
   const element = document.createElement(tagName);
   if (className) element.className = className;
@@ -180,6 +225,9 @@ function initializeDashboard() {
     mustExcludeInput: document.querySelector('#must-exclude-input'),
     ruleFormError: document.querySelector('#rule-form-error'),
     ruleSubmitButton: document.querySelector('#rule-submit-button'),
+    ruleDialogCloseButtons: document.querySelectorAll(
+      '[data-rule-dialog-close]',
+    ),
     xmlDialog: document.querySelector('#xml-dialog'),
     xmlDialogTitle: document.querySelector('#xml-dialog-title'),
     xmlContent: document.querySelector('#xml-content'),
@@ -195,6 +243,11 @@ function initializeDashboard() {
   elements.unmatchedSubscriptionUrl.value = subscriptionUrls.unmatched;
   elements.matchedSubscriptionLink.href = subscriptionUrls.matched;
   elements.unmatchedSubscriptionLink.href = subscriptionUrls.unmatched;
+  const ruleSavingState = createRuleSavingState({
+    closeButtons: elements.ruleDialogCloseButtons,
+    submitButton: elements.ruleSubmitButton,
+    setButtonBusy,
+  });
 
   function setServiceStatus(isOnline, label) {
     elements.serviceStatus.classList.toggle('is-online', isOnline);
@@ -409,6 +462,14 @@ function initializeDashboard() {
     renderRules();
   }
 
+  function handleRulesLoadError(error) {
+    elements.rulesList.replaceChildren(
+      createElement('div', 'empty-block', '分流规则加载失败，请稍后重试。'),
+    );
+    elements.ruleCount.textContent = '—';
+    showToast(error.message, 'error');
+  }
+
   function openPlatformDialog(platform = null) {
     state.editingPlatform = platform;
     elements.platformDialogTitle.textContent = platform ? '修改订阅平台' : '新增订阅平台';
@@ -446,6 +507,7 @@ function initializeDashboard() {
   }
 
   function openRuleDialog(rule = null) {
+    if (ruleSavingState.isRuleSaving) return;
     state.editingRule = rule;
     elements.ruleDialogTitle.textContent = rule
       ? '修改分流规则'
@@ -469,11 +531,12 @@ function initializeDashboard() {
     elements.ruleFormError.textContent = validationMessage;
     if (validationMessage) return;
 
-    const isEditing = Boolean(state.editingRule);
-    setButtonBusy(elements.ruleSubmitButton, true, '正在保存…');
+    const editingRule = state.editingRule;
+    const isEditing = Boolean(editingRule);
+    ruleSavingState.setSaving(true);
     try {
-      if (state.editingRule) {
-        await api.updateRule(state.editingRule.id, rule);
+      if (editingRule) {
+        await api.updateRule(editingRule.id, rule);
       } else {
         await api.createRule(rule);
       }
@@ -484,7 +547,7 @@ function initializeDashboard() {
       elements.ruleFormError.textContent = error.message;
       elements.ruleFormError.hidden = false;
     } finally {
-      setButtonBusy(elements.ruleSubmitButton, false);
+      ruleSavingState.setSaving(false);
     }
   }
 
@@ -605,6 +668,7 @@ function initializeDashboard() {
   elements.addRuleButton.addEventListener('click', () => openRuleDialog());
   elements.platformForm.addEventListener('submit', handlePlatformSubmit);
   elements.ruleForm.addEventListener('submit', handleRuleSubmit);
+  elements.ruleDialog.addEventListener('cancel', ruleSavingState.handleCancel);
   elements.platformList.addEventListener('click', handlePlatformAction);
   elements.rulesList.addEventListener('click', handleRuleAction);
   elements.refreshButton.addEventListener('click', handleRefresh);
@@ -614,7 +678,12 @@ function initializeDashboard() {
     button.addEventListener('click', copySubscription);
   }
 
-  Promise.all([loadPlatforms(), loadItems(), loadRules()])
+  loadInitialDashboard({
+    loadPlatforms,
+    loadItems,
+    loadRules,
+    handleRulesLoadError,
+  })
     .then(() => setServiceStatus(true, '服务在线'))
     .catch((error) => {
       setServiceStatus(false, '连接失败');

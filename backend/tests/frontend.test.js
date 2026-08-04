@@ -23,6 +23,11 @@ test('Koa 提供 RSS 管理台及静态资源', async () => {
     assert.match(page.text, /id="items-list"/);
     assert.match(page.text, /id="rules-panel"/);
     assert.match(page.text, /id="rule-dialog"/);
+    assert.equal(
+      page.text.match(/data-rule-dialog-close/g)?.length,
+      2,
+      '规则 dialog 应标记关闭和取消按钮，保存期间统一禁用',
+    );
     assert.match(page.text, /id="matched-subscription-url"/);
     assert.match(page.text, /id="unmatched-subscription-url"/);
     assert.match(page.text, /id="platform-dialog"/);
@@ -52,6 +57,98 @@ test('前端纯函数提供稳定的缺省展示与刷新摘要', async () => {
   assert.equal(
     summarizeRefresh({ total: 3, success: 2, failed: 1 }),
     '已更新 2 个平台，1 个失败',
+  );
+});
+
+test('规则保存状态锁定 dialog 并在结束后完整恢复', async () => {
+  const { createRuleSavingState } = await import('../public/app.js');
+  const closeButtons = [{ disabled: false }, { disabled: false }];
+  const submitButton = { disabled: false };
+  const busyCalls = [];
+  const savingState = createRuleSavingState({
+    closeButtons,
+    submitButton,
+    setButtonBusy(button, isBusy, label) {
+      button.disabled = isBusy;
+      busyCalls.push({ isBusy, label });
+    },
+  });
+
+  savingState.setSaving(true);
+  assert.equal(savingState.isRuleSaving, true);
+  assert.deepEqual(closeButtons.map((button) => button.disabled), [true, true]);
+  assert.equal(submitButton.disabled, true);
+
+  let isCancelPrevented = false;
+  savingState.handleCancel({
+    preventDefault() {
+      isCancelPrevented = true;
+    },
+  });
+  assert.equal(isCancelPrevented, true);
+
+  savingState.setSaving(false);
+  assert.equal(savingState.isRuleSaving, false);
+  assert.deepEqual(closeButtons.map((button) => button.disabled), [false, false]);
+  assert.equal(submitButton.disabled, false);
+  assert.deepEqual(busyCalls, [
+    { isBusy: true, label: '正在保存…' },
+    { isBusy: false, label: '正在保存…' },
+  ]);
+});
+
+test('初始化并行加载且仅局部处理规则加载失败', async () => {
+  const { loadInitialDashboard } = await import('../public/app.js');
+  const calls = [];
+  const handledErrors = [];
+  const createDeferred = () => {
+    let resolve;
+    let reject;
+    const promise = new Promise((resolvePromise, rejectPromise) => {
+      resolve = resolvePromise;
+      reject = rejectPromise;
+    });
+    return { promise, resolve, reject };
+  };
+  const platforms = createDeferred();
+  const items = createDeferred();
+  const rules = createDeferred();
+
+  const loading = loadInitialDashboard({
+    loadPlatforms() {
+      calls.push('platforms');
+      return platforms.promise;
+    },
+    loadItems() {
+      calls.push('items');
+      return items.promise;
+    },
+    loadRules() {
+      calls.push('rules');
+      return rules.promise;
+    },
+    handleRulesLoadError(error) {
+      handledErrors.push(error.message);
+    },
+  });
+
+  assert.deepEqual(calls, ['platforms', 'items', 'rules']);
+  rules.reject(new Error('规则加载失败'));
+  platforms.resolve();
+  items.resolve();
+  await loading;
+  assert.deepEqual(handledErrors, ['规则加载失败']);
+
+  await assert.rejects(
+    loadInitialDashboard({
+      loadPlatforms: async () => {
+        throw new Error('平台加载失败');
+      },
+      loadItems: async () => {},
+      loadRules: async () => {},
+      handleRulesLoadError() {},
+    }),
+    /平台加载失败/,
   );
 });
 
