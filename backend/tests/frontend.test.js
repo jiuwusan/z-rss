@@ -21,6 +21,10 @@ test('Koa 提供 RSS 管理台及静态资源', async () => {
     assert.match(page.headers['content-type'], /text\/html/);
     assert.match(page.text, /id="platforms-panel"/);
     assert.match(page.text, /id="items-list"/);
+    assert.match(page.text, /id="rules-panel"/);
+    assert.match(page.text, /id="rule-dialog"/);
+    assert.match(page.text, /id="matched-subscription-url"/);
+    assert.match(page.text, /id="unmatched-subscription-url"/);
     assert.match(page.text, /id="platform-dialog"/);
     assert.match(page.text, /id="xml-dialog"/);
     assert.match(page.text, /<script type="module" src="\/app\.js"><\/script>/);
@@ -69,6 +73,10 @@ test('前端 API client 使用约定的 RSS 接口和请求方法', async () => 
   await api.updatePlatform('A B', { rss: 'https://example.com/b.xml' });
   await api.deletePlatform('A B');
   await api.refreshCache();
+  await api.listRules();
+  await api.createRule({ mustInclude: '2160p', mustExclude: 'DV' });
+  await api.updateRule('rule 1', { mustInclude: '1080p', mustExclude: '' });
+  await api.deleteRule('rule 1');
 
   assert.deepEqual(
     calls.map(({ url, options }) => [url, options.method || 'GET']),
@@ -79,11 +87,44 @@ test('前端 API client 使用约定的 RSS 接口和请求方法', async () => 
       ['/rss/platforms/A%20B', 'PUT'],
       ['/rss/platforms/A%20B', 'DELETE'],
       ['/rss/cache/refresh', 'POST'],
+      ['/rss/rules', 'GET'],
+      ['/rss/rules', 'POST'],
+      ['/rss/rules/rule%201', 'PUT'],
+      ['/rss/rules/rule%201', 'DELETE'],
     ],
   );
   assert.equal(
     calls[2].options.body,
     JSON.stringify({ platform: 'A', rss: 'https://example.com/a.xml' }),
+  );
+  assert.equal(
+    calls[7].options.body,
+    JSON.stringify({ mustInclude: '2160p', mustExclude: 'DV' }),
+  );
+  assert.equal(
+    calls[8].options.body,
+    JSON.stringify({ mustInclude: '1080p', mustExclude: '' }),
+  );
+});
+
+test('前端规则校验限制必含表达式和字段长度', async () => {
+  const { validateRuleInput } = await import('../public/app.js');
+
+  assert.equal(
+    validateRuleInput({ mustInclude: '', mustExclude: '' }),
+    '请填写必含表达式',
+  );
+  assert.equal(
+    validateRuleInput({ mustInclude: 'a'.repeat(257), mustExclude: '' }),
+    '必含表达式不能超过 256 个字符',
+  );
+  assert.equal(
+    validateRuleInput({ mustInclude: '2160p', mustExclude: 'a'.repeat(257) }),
+    '排除表达式不能超过 256 个字符',
+  );
+  assert.equal(
+    validateRuleInput({ mustInclude: '2160p', mustExclude: 'DV' }),
+    '',
   );
 });
 

@@ -84,6 +84,48 @@
             </div>
           </section>
         </section>
+
+        <section class="panel rules-panel" id="rules-panel" aria-labelledby="rules-heading">
+          <div class="panel-heading">
+            <div>
+              <p class="section-kicker">RSS FILTERING</p>
+              <h2 id="rules-heading">分流规则 <span class="rules-count" id="rule-count">—</span></h2>
+            </div>
+            <button class="button button-secondary button-compact" id="add-rule-button" type="button">
+              <span aria-hidden="true">＋</span>
+              新增规则
+            </button>
+          </div>
+          <p class="panel-description">按标题正则分流缓存条目。规则默认忽略大小写，不需要填写 /.../i。</p>
+          <div class="rules-list" id="rules-list" aria-live="polite">
+            <div class="loading-block">正在加载分流规则…</div>
+          </div>
+
+          <div class="subscription-links" aria-label="qBittorrent 订阅链接">
+            <div class="subscription-link-row">
+              <div class="subscription-link-heading">
+                <strong>已匹配订阅</strong>
+                <span>命中任一分流规则的条目</span>
+              </div>
+              <input id="matched-subscription-url" type="text" readonly aria-label="已匹配订阅 URL" />
+              <div class="subscription-link-actions">
+                <button class="button button-ghost button-compact" type="button" data-copy-subscription="matched">复制</button>
+                <a class="button button-ghost button-compact" id="matched-subscription-link" href="/rss/subscriptions/matched" target="_blank" rel="noopener noreferrer">打开 ↗</a>
+              </div>
+            </div>
+            <div class="subscription-link-row">
+              <div class="subscription-link-heading">
+                <strong>未匹配订阅</strong>
+                <span>未命中任何分流规则的条目</span>
+              </div>
+              <input id="unmatched-subscription-url" type="text" readonly aria-label="未匹配订阅 URL" />
+              <div class="subscription-link-actions">
+                <button class="button button-ghost button-compact" type="button" data-copy-subscription="unmatched">复制</button>
+                <a class="button button-ghost button-compact" id="unmatched-subscription-link" href="/rss/subscriptions/unmatched" target="_blank" rel="noopener noreferrer">打开 ↗</a>
+              </div>
+            </div>
+          </div>
+        </section>
       </main>
     </div>
 
@@ -109,6 +151,33 @@
         <div class="modal-actions">
           <button class="button button-ghost" data-close-dialog="platform-dialog" type="button">取消</button>
           <button class="button button-primary" id="platform-submit-button" type="submit">保存平台</button>
+        </div>
+      </form>
+    </dialog>
+
+    <dialog class="modal" id="rule-dialog" aria-labelledby="rule-dialog-title">
+      <form class="modal-card" id="rule-form">
+        <div class="modal-heading">
+          <div>
+            <p class="section-kicker">RSS FILTERING</p>
+            <h2 id="rule-dialog-title">新增分流规则</h2>
+          </div>
+          <button class="icon-button" data-close-dialog="rule-dialog" type="button" aria-label="关闭">×</button>
+        </div>
+        <label class="field">
+          <span>必含表达式</span>
+          <input id="must-include-input" name="mustInclude" autocomplete="off" maxlength="256" required />
+          <small>正则必须匹配标题；默认忽略大小写，不需要填写 /.../i。</small>
+        </label>
+        <label class="field">
+          <span>排除表达式</span>
+          <input id="must-exclude-input" name="mustExclude" autocomplete="off" maxlength="256" />
+          <small>可留空；匹配该正则的标题不会进入已匹配订阅。</small>
+        </label>
+        <p class="form-error" id="rule-form-error" hidden></p>
+        <div class="modal-actions">
+          <button class="button button-ghost" data-close-dialog="rule-dialog" type="button">取消</button>
+          <button class="button button-primary" id="rule-submit-button" type="submit">保存规则</button>
         </div>
       </form>
     </dialog>

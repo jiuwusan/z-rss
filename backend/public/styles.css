@@ -58,7 +58,9 @@ button {
 .modal-actions,
 .item-meta,
 .item-actions,
-.platform-actions {
+.platform-actions,
+.rule-actions,
+.subscription-link-actions {
   display: flex;
   align-items: center;
 }
@@ -181,6 +183,7 @@ h2 {
   padding: 0 18px;
   border-radius: 12px;
   font-weight: 750;
+  text-decoration: none;
   transition: transform 150ms ease, box-shadow 150ms ease, background 150ms ease;
 }
 
@@ -293,8 +296,13 @@ h2 {
 }
 
 .platforms-panel,
-.items-panel {
+.items-panel,
+.rules-panel {
   padding: 24px;
+}
+
+.rules-panel {
+  margin-top: 18px;
 }
 
 .platforms-panel {
@@ -314,9 +322,103 @@ h2 {
 }
 
 .platform-list,
-.items-list {
+.items-list,
+.rules-list {
   display: grid;
   gap: 11px;
+}
+
+.rules-count {
+  color: var(--muted);
+  font-size: 14px;
+  font-weight: 700;
+}
+
+.rule-card {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 18px;
+  padding: 16px;
+  border: 1px solid var(--line);
+  border-radius: 14px;
+  background: var(--surface-soft);
+}
+
+.rule-patterns {
+  display: grid;
+  min-width: 0;
+  gap: 9px;
+}
+
+.rule-pattern-row {
+  display: grid;
+  grid-template-columns: 42px minmax(0, 1fr);
+  align-items: center;
+  gap: 10px;
+}
+
+.rule-pattern-label {
+  color: var(--muted);
+  font-size: 11px;
+  font-weight: 750;
+}
+
+.rule-pattern {
+  overflow-wrap: anywhere;
+  color: var(--ink);
+  font-family: "SFMono-Regular", Consolas, "Liberation Mono", monospace;
+  font-size: 12px;
+  line-height: 1.5;
+}
+
+.rule-pattern.is-empty {
+  color: var(--muted);
+}
+
+.rule-actions,
+.subscription-link-actions {
+  flex: 0 0 auto;
+  gap: 6px;
+}
+
+.subscription-links {
+  display: grid;
+  gap: 11px;
+  margin-top: 20px;
+  padding-top: 20px;
+  border-top: 1px solid var(--line);
+}
+
+.subscription-link-row {
+  display: grid;
+  grid-template-columns: minmax(150px, 0.35fr) minmax(260px, 1fr) auto;
+  align-items: center;
+  gap: 12px;
+}
+
+.subscription-link-heading {
+  display: grid;
+  gap: 4px;
+  font-size: 13px;
+}
+
+.subscription-link-heading span {
+  color: var(--muted);
+  font-size: 11px;
+}
+
+.subscription-link-row input {
+  width: 100%;
+  min-width: 0;
+  height: 40px;
+  padding: 0 12px;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  outline: none;
+  background: var(--surface-soft);
+  color: var(--muted);
+  font-size: 12px;
 }
 
 .platform-card {
@@ -626,6 +728,14 @@ h2 {
   .platform-list {
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
+
+  .subscription-link-row {
+    grid-template-columns: 1fr auto;
+  }
+
+  .subscription-link-heading {
+    grid-column: 1 / -1;
+  }
 }
 
 @media (max-width: 680px) {
@@ -663,8 +773,28 @@ h2 {
   }
 
   .platforms-panel,
-  .items-panel {
+  .items-panel,
+  .rules-panel {
     padding: 18px;
+  }
+
+  .rule-card,
+  .subscription-link-row {
+    align-items: stretch;
+    grid-template-columns: 1fr;
+  }
+
+  .rule-card {
+    flex-direction: column;
+  }
+
+  .rule-actions,
+  .subscription-link-actions {
+    justify-content: flex-end;
+  }
+
+  .subscription-link-heading {
+    grid-column: auto;
   }
 
   .items-heading-row {

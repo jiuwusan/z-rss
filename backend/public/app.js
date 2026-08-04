@@ -38,6 +38,20 @@ export function summarizeRefresh(result) {
   return `已更新 ${success} 个平台，${failed} 个失败`;
 }
 
+/**
+ * 校验分流规则输入。
+ * @param {{ mustInclude?: string, mustExclude?: string }} rule 规则输入
+ * @returns {string} 错误消息，为空表示校验通过
+ */
+export function validateRuleInput(rule) {
+  const mustInclude = rule?.mustInclude ?? '';
+  const mustExclude = rule?.mustExclude ?? '';
+  if (mustInclude.trim() === '') return '请填写必含表达式';
+  if (mustInclude.length > 256) return '必含表达式不能超过 256 个字符';
+  if (mustExclude.length > 256) return '排除表达式不能超过 256 个字符';
+  return '';
+}
+
 async function requestJson(fetchImpl, url, options = {}) {
   const response = await fetchImpl(url, options);
   let payload;
@@ -80,6 +94,23 @@ export function createApiClient(fetchImpl = globalThis.fetch) {
       }),
     refreshCache: () =>
       requestJson(fetchImpl, '/rss/cache/refresh', { method: 'POST' }),
+    listRules: () => requestJson(fetchImpl, '/rss/rules'),
+    createRule: (rule) =>
+      requestJson(fetchImpl, '/rss/rules', {
+        method: 'POST',
+        headers: JSON_HEADERS,
+        body: JSON.stringify(rule),
+      }),
+    updateRule: (id, rule) =>
+      requestJson(fetchImpl, `/rss/rules/${encodeURIComponent(id)}`, {
+        method: 'PUT',
+        headers: JSON_HEADERS,
+        body: JSON.stringify(rule),
+      }),
+    deleteRule: (id) =>
+      requestJson(fetchImpl, `/rss/rules/${encodeURIComponent(id)}`, {
+        method: 'DELETE',
+      }),
   };
 }
 
@@ -105,7 +136,9 @@ function initializeDashboard() {
   const state = {
     platforms: [],
     items: [],
+    rules: [],
     editingPlatform: null,
+    editingRule: null,
     currentXml: '',
   };
   const elements = {
@@ -118,6 +151,21 @@ function initializeDashboard() {
     itemsList: document.querySelector('#items-list'),
     refreshResults: document.querySelector('#refresh-results'),
     addPlatformButton: document.querySelector('#add-platform-button'),
+    ruleCount: document.querySelector('#rule-count'),
+    rulesList: document.querySelector('#rules-list'),
+    addRuleButton: document.querySelector('#add-rule-button'),
+    matchedSubscriptionUrl: document.querySelector(
+      '#matched-subscription-url',
+    ),
+    unmatchedSubscriptionUrl: document.querySelector(
+      '#unmatched-subscription-url',
+    ),
+    matchedSubscriptionLink: document.querySelector(
+      '#matched-subscription-link',
+    ),
+    unmatchedSubscriptionLink: document.querySelector(
+      '#unmatched-subscription-link',
+    ),
     platformDialog: document.querySelector('#platform-dialog'),
     platformDialogTitle: document.querySelector('#platform-dialog-title'),
     platformForm: document.querySelector('#platform-form'),
@@ -125,12 +173,28 @@ function initializeDashboard() {
     rssInput: document.querySelector('#rss-input'),
     platformFormError: document.querySelector('#platform-form-error'),
     platformSubmitButton: document.querySelector('#platform-submit-button'),
+    ruleDialog: document.querySelector('#rule-dialog'),
+    ruleDialogTitle: document.querySelector('#rule-dialog-title'),
+    ruleForm: document.querySelector('#rule-form'),
+    mustIncludeInput: document.querySelector('#must-include-input'),
+    mustExcludeInput: document.querySelector('#must-exclude-input'),
+    ruleFormError: document.querySelector('#rule-form-error'),
+    ruleSubmitButton: document.querySelector('#rule-submit-button'),
     xmlDialog: document.querySelector('#xml-dialog'),
     xmlDialogTitle: document.querySelector('#xml-dialog-title'),
     xmlContent: document.querySelector('#xml-content'),
     copyXmlButton: document.querySelector('#copy-xml-button'),
     toastRegion: document.querySelector('#toast-region'),
   };
+  const subscriptionUrls = {
+    matched: new URL('/rss/subscriptions/matched', window.location.origin).href,
+    unmatched: new URL('/rss/subscriptions/unmatched', window.location.origin)
+      .href,
+  };
+  elements.matchedSubscriptionUrl.value = subscriptionUrls.matched;
+  elements.unmatchedSubscriptionUrl.value = subscriptionUrls.unmatched;
+  elements.matchedSubscriptionLink.href = subscriptionUrls.matched;
+  elements.unmatchedSubscriptionLink.href = subscriptionUrls.unmatched;
 
   function setServiceStatus(isOnline, label) {
     elements.serviceStatus.classList.toggle('is-online', isOnline);
@@ -202,6 +266,61 @@ function initializeDashboard() {
     }
     elements.platformList.append(fragment);
     updateStats();
+  }
+
+  function renderRules() {
+    elements.rulesList.replaceChildren();
+    elements.ruleCount.textContent = String(state.rules.length);
+    if (state.rules.length === 0) {
+      elements.rulesList.append(
+        createElement(
+          'div',
+          'empty-block',
+          '尚未配置分流规则，所有条目都会进入未匹配订阅。',
+        ),
+      );
+      return;
+    }
+
+    const fragment = document.createDocumentFragment();
+    for (const rule of state.rules) {
+      const card = createElement('article', 'rule-card');
+      const patterns = createElement('div', 'rule-patterns');
+
+      const includeRow = createElement('div', 'rule-pattern-row');
+      includeRow.append(
+        createElement('span', 'rule-pattern-label', '必含'),
+        createElement('code', 'rule-pattern', rule.mustInclude),
+      );
+      const excludeRow = createElement('div', 'rule-pattern-row');
+      excludeRow.append(
+        createElement('span', 'rule-pattern-label', '排除'),
+        createElement(
+          'code',
+          `rule-pattern${rule.mustExclude ? '' : ' is-empty'}`,
+          rule.mustExclude || '未设置',
+        ),
+      );
+      patterns.append(includeRow, excludeRow);
+
+      const actions = createElement('div', 'rule-actions');
+      const editButton = createElement('button', 'text-button', '编辑');
+      editButton.type = 'button';
+      editButton.dataset.action = 'edit-rule';
+      editButton.dataset.ruleId = rule.id;
+      const deleteButton = createElement(
+        'button',
+        'text-button text-button-danger',
+        '删除',
+      );
+      deleteButton.type = 'button';
+      deleteButton.dataset.action = 'delete-rule';
+      deleteButton.dataset.ruleId = rule.id;
+      actions.append(editButton, deleteButton);
+      card.append(patterns, actions);
+      fragment.append(card);
+    }
+    elements.rulesList.append(fragment);
   }
 
   function renderItems() {
@@ -285,6 +404,11 @@ function initializeDashboard() {
     renderItems();
   }
 
+  async function loadRules() {
+    state.rules = await api.listRules();
+    renderRules();
+  }
+
   function openPlatformDialog(platform = null) {
     state.editingPlatform = platform;
     elements.platformDialogTitle.textContent = platform ? '修改订阅平台' : '新增订阅平台';
@@ -318,6 +442,76 @@ function initializeDashboard() {
       elements.platformFormError.hidden = false;
     } finally {
       setButtonBusy(elements.platformSubmitButton, false);
+    }
+  }
+
+  function openRuleDialog(rule = null) {
+    state.editingRule = rule;
+    elements.ruleDialogTitle.textContent = rule
+      ? '修改分流规则'
+      : '新增分流规则';
+    elements.mustIncludeInput.value = rule?.mustInclude || '';
+    elements.mustExcludeInput.value = rule?.mustExclude || '';
+    elements.ruleFormError.hidden = true;
+    elements.ruleFormError.textContent = '';
+    elements.ruleDialog.showModal();
+    window.setTimeout(() => elements.mustIncludeInput.focus());
+  }
+
+  async function handleRuleSubmit(event) {
+    event.preventDefault();
+    const rule = {
+      mustInclude: elements.mustIncludeInput.value,
+      mustExclude: elements.mustExcludeInput.value,
+    };
+    const validationMessage = validateRuleInput(rule);
+    elements.ruleFormError.hidden = validationMessage === '';
+    elements.ruleFormError.textContent = validationMessage;
+    if (validationMessage) return;
+
+    const isEditing = Boolean(state.editingRule);
+    setButtonBusy(elements.ruleSubmitButton, true, '正在保存…');
+    try {
+      if (state.editingRule) {
+        await api.updateRule(state.editingRule.id, rule);
+      } else {
+        await api.createRule(rule);
+      }
+      await loadRules();
+      elements.ruleDialog.close();
+      showToast(isEditing ? '分流规则已更新' : '分流规则已新增');
+    } catch (error) {
+      elements.ruleFormError.textContent = error.message;
+      elements.ruleFormError.hidden = false;
+    } finally {
+      setButtonBusy(elements.ruleSubmitButton, false);
+    }
+  }
+
+  async function handleRuleAction(event) {
+    const button = event.target.closest('button[data-rule-id]');
+    if (!button) return;
+    const rule = state.rules.find((item) => item.id === button.dataset.ruleId);
+    if (!rule) return;
+
+    if (button.dataset.action === 'edit-rule') {
+      openRuleDialog(rule);
+      return;
+    }
+    if (button.dataset.action !== 'delete-rule') return;
+    const isConfirmed = window.confirm(
+      `确定删除必含表达式“${rule.mustInclude}”吗？`,
+    );
+    if (!isConfirmed) return;
+
+    button.disabled = true;
+    try {
+      await api.deleteRule(rule.id);
+      await loadRules();
+      showToast('分流规则已删除');
+    } catch (error) {
+      button.disabled = false;
+      showToast(error.message, 'error');
     }
   }
 
@@ -391,19 +585,36 @@ function initializeDashboard() {
     }
   }
 
+  async function copySubscription(event) {
+    const subscriptionUrl =
+      subscriptionUrls[event.currentTarget.dataset.copySubscription];
+    try {
+      await navigator.clipboard.writeText(subscriptionUrl);
+      showToast('订阅链接已复制');
+    } catch {
+      showToast('浏览器未允许复制，请手动选择订阅链接', 'error');
+    }
+  }
+
   for (const button of document.querySelectorAll('[data-close-dialog]')) {
     button.addEventListener('click', () => {
       document.querySelector(`#${button.dataset.closeDialog}`)?.close();
     });
   }
   elements.addPlatformButton.addEventListener('click', () => openPlatformDialog());
+  elements.addRuleButton.addEventListener('click', () => openRuleDialog());
   elements.platformForm.addEventListener('submit', handlePlatformSubmit);
+  elements.ruleForm.addEventListener('submit', handleRuleSubmit);
   elements.platformList.addEventListener('click', handlePlatformAction);
+  elements.rulesList.addEventListener('click', handleRuleAction);
   elements.refreshButton.addEventListener('click', handleRefresh);
   elements.itemsList.addEventListener('click', handleItemAction);
   elements.copyXmlButton.addEventListener('click', copyXml);
+  for (const button of document.querySelectorAll('[data-copy-subscription]')) {
+    button.addEventListener('click', copySubscription);
+  }
 
-  Promise.all([loadPlatforms(), loadItems()])
+  Promise.all([loadPlatforms(), loadItems(), loadRules()])
     .then(() => setServiceStatus(true, '服务在线'))
     .catch((error) => {
       setServiceStatus(false, '连接失败');
@@ -414,6 +625,10 @@ function initializeDashboard() {
         createElement('div', 'empty-block empty-block-large', '缓存数据加载失败，请稍后重试。'),
       );
       elements.itemsList.setAttribute('aria-busy', 'false');
+      elements.rulesList.replaceChildren(
+        createElement('div', 'empty-block', '分流规则加载失败，请稍后重试。'),
+      );
+      elements.ruleCount.textContent = '—';
       showToast(error.message, 'error');
     });
 }
