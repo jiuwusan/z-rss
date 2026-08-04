@@ -64,7 +64,7 @@ npm test
 
 运行数据保存在 `data/platforms.json`、`data/rss-cache.json` 和 `data/rss-rules.json`：分别保存订阅平台、RSS 聚合缓存和分流规则。`templates/` 保存生成订阅 RSS 所需的 XML 母版。聚合查询与订阅查询只读取本地缓存，不会实时请求外部 RSS。
 
-Docker Compose 使用 `rss-data` 命名卷挂载 `/app/data`。普通 `docker compose down` 不删除数据；执行 `docker compose down -v` 会删除平台配置和 RSS 缓存，请谨慎使用。
+Docker Compose 使用 `rss-data` 命名卷挂载 `/app/data`。普通 `docker compose down` 不删除数据；执行 `docker compose down -v` 会删除平台配置、RSS 缓存和分流规则，请谨慎使用。
 
 ## 目录职责
 
