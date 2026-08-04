@@ -16,7 +16,7 @@ COPY --chown=node:node package.json package-lock.json ./
 COPY --chown=node:node src ./src
 COPY --chown=node:node public ./public
 COPY --chown=node:node templates ./templates
-COPY --chown=node:node data ./data
+COPY --chown=node:node docker-data ./data
 
 USER node
 

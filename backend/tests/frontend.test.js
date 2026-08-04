@@ -152,6 +152,41 @@ test('初始化并行加载且仅局部处理规则加载失败', async () => {
   );
 });
 
+test('规则 mutation 成功后重载失败仍视为成功且 mutation 仅执行一次', async () => {
+  const { runRuleMutation } = await import('../public/app.js');
+
+  for (const mutationName of ['create', 'update', 'delete']) {
+    const calls = [];
+    const mutationResult = { mutationName };
+
+    const result = await runRuleMutation({
+      mutate: async () => {
+        calls.push('mutation');
+        return mutationResult;
+      },
+      handleSuccess(value) {
+        assert.equal(value, mutationResult);
+        calls.push('success');
+      },
+      loadRules: async () => {
+        calls.push('reload');
+        throw new Error(`${mutationName} 后规则重载失败`);
+      },
+      handleRulesLoadError(error) {
+        calls.push(`load-error:${error.message}`);
+      },
+    });
+
+    assert.equal(result, mutationResult);
+    assert.deepEqual(calls, [
+      'mutation',
+      'success',
+      'reload',
+      `load-error:${mutationName} 后规则重载失败`,
+    ]);
+  }
+});
+
 test('前端 API client 使用约定的 RSS 接口和请求方法', async () => {
   const { createApiClient } = await import('../public/app.js');
   const calls = [];

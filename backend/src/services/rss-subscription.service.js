@@ -1,6 +1,7 @@
 import { randomUUID } from 'node:crypto';
 import { readFile } from 'node:fs/promises';
 import { fileURLToPath } from 'node:url';
+import { parseRssItems } from '../parsers/rss.parser.js';
 import { createRssRepository } from '../repositories/rss.repository.js';
 import { createHttpError } from '../utils/http-error.util.js';
 import { sortRssItems } from '../utils/rss-item.util.js';
@@ -54,6 +55,32 @@ function validateStoredRule(rule) {
   }
 }
 
+function validateStoredRules(rules) {
+  const validatedRules = rules.map(validateStoredRule);
+  const ruleIds = new Set(validatedRules.map((rule) => rule.id));
+  if (validatedRules.length > MAX_RULES || ruleIds.size !== validatedRules.length) {
+    throw new Error('持久化 RSS 分流规则集合无效');
+  }
+  return validatedRules;
+}
+
+function validateItemXml(itemXml) {
+  if (typeof itemXml !== 'string') {
+    throw new Error('RSS 条目原始 XML 无效');
+  }
+  try {
+    const parsedItems = parseRssItems(
+      `<rss><channel>${itemXml}</channel></rss>`,
+    );
+    if (parsedItems.length !== 1 || parsedItems[0].xml !== itemXml) {
+      throw new Error('RSS 条目原始 XML 无效');
+    }
+  } catch {
+    throw new Error('RSS 条目原始 XML 无效');
+  }
+  return itemXml;
+}
+
 /**
  * 将 RSS 条目按规则分为已匹配和未匹配两组。
  * @param {object[]} items RSS 条目
@@ -103,7 +130,7 @@ export function createRssSubscriptionService({
 
   async function listRules() {
     const rules = await repository.listRules();
-    return rules.map(validateStoredRule);
+    return validateStoredRules(rules);
   }
 
   async function createRule(input = {}) {
@@ -156,12 +183,9 @@ export function createRssSubscriptionService({
       throw new Error('RSS 订阅母版占位符无效');
     }
     const partitioned = partitionItems(items, rules);
-    const itemXml = partitioned[kind].map((item) => {
-      if (typeof item.xml !== 'string') {
-        throw new Error('RSS 条目原始 XML 无效');
-      }
-      return item.xml;
-    }).join('\n');
+    const itemXml = partitioned[kind]
+      .map((item) => validateItemXml(item.xml))
+      .join('\n');
     return template.replace(ITEM_PLACEHOLDER, () => itemXml);
   }
 

@@ -64,7 +64,9 @@ npm test
 
 运行数据保存在 `data/platforms.json`、`data/rss-cache.json` 和 `data/rss-rules.json`：分别保存订阅平台、RSS 聚合缓存和分流规则。`templates/` 保存生成订阅 RSS 所需的 XML 母版。聚合查询与订阅查询只读取本地缓存，不会实时请求外部 RSS。
 
-Docker Compose 使用 `rss-data` 命名卷挂载 `/app/data`。普通 `docker compose down` 不删除数据；执行 `docker compose down -v` 会删除平台配置、RSS 缓存和分流规则，请谨慎使用。
+Docker 镜像不会复制本地 `data/` 运行数据，避免把缓存或 passkey 等凭据打入镜像；镜像仅复制固定的 `docker-data/` 安全种子，其中三个 JSON 文件均为空数组。本地开发仍继续使用 `data/`，两者互不影响。
+
+Docker Compose 使用 `rss-data` 命名卷挂载 `/app/data`。首次创建 `rss-data` 命名卷时，Docker 会用镜像内的三个空数组文件初始化卷，运行时 repository 可直接读取并继续原子写入。普通 `docker compose down` 不删除数据；执行 `docker compose down -v` 会删除平台配置、RSS 缓存和分流规则，请谨慎使用。
 
 ## 目录职责
 
@@ -79,6 +81,7 @@ Docker Compose 使用 `rss-data` 命名卷挂载 `/app/data`。普通 `docker co
 - `public/`：保存 RSS 管理台的 HTML、CSS 和 JavaScript 静态资源。
 - `templates/`：保存生成分流订阅所需的 RSS XML 母版。
 - `data/`：保存订阅平台、RSS 聚合缓存和分流规则。
+- `docker-data/`：保存镜像内用于首次初始化命名卷的安全空数据。
 
 ## Docker Compose 部署
 

@@ -159,6 +159,27 @@ export function loadInitialDashboard({
   return Promise.all([platformsPromise, itemsPromise, rulesPromise]);
 }
 
+/**
+ * 完成规则变更后先确认成功，再将重载失败限制在规则面板内。
+ * @param {object} options 规则变更依赖
+ * @returns {Promise<unknown>} mutation 返回结果
+ */
+export async function runRuleMutation({
+  mutate,
+  handleSuccess,
+  loadRules,
+  handleRulesLoadError,
+}) {
+  const result = await mutate();
+  handleSuccess(result);
+  try {
+    await loadRules();
+  } catch (error) {
+    handleRulesLoadError(error);
+  }
+  return result;
+}
+
 function createElement(tagName, className, text) {
   const element = document.createElement(tagName);
   if (className) element.className = className;
@@ -535,14 +556,17 @@ function initializeDashboard() {
     const isEditing = Boolean(editingRule);
     ruleSavingState.setSaving(true);
     try {
-      if (editingRule) {
-        await api.updateRule(editingRule.id, rule);
-      } else {
-        await api.createRule(rule);
-      }
-      await loadRules();
-      elements.ruleDialog.close();
-      showToast(isEditing ? '分流规则已更新' : '分流规则已新增');
+      await runRuleMutation({
+        mutate: () => editingRule
+          ? api.updateRule(editingRule.id, rule)
+          : api.createRule(rule),
+        handleSuccess() {
+          elements.ruleDialog.close();
+          showToast(isEditing ? '分流规则已更新' : '分流规则已新增');
+        },
+        loadRules,
+        handleRulesLoadError,
+      });
     } catch (error) {
       elements.ruleFormError.textContent = error.message;
       elements.ruleFormError.hidden = false;
@@ -569,9 +593,14 @@ function initializeDashboard() {
 
     button.disabled = true;
     try {
-      await api.deleteRule(rule.id);
-      await loadRules();
-      showToast('分流规则已删除');
+      await runRuleMutation({
+        mutate: () => api.deleteRule(rule.id),
+        handleSuccess() {
+          showToast('分流规则已删除');
+        },
+        loadRules,
+        handleRulesLoadError,
+      });
     } catch (error) {
       button.disabled = false;
       showToast(error.message, 'error');

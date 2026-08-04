@@ -10,7 +10,7 @@ const PUBLIC_DIRECTORY = fileURLToPath(new URL('../public/', import.meta.url));
 
 /**
  * 创建并组装 Koa 应用。
- * @param {{ rssService?: object, subscriptionService?: object }} options 应用依赖
+ * @param {{ repository?: object, rssService?: object, subscriptionService?: object }} options 应用依赖
  * @returns {Koa}
  */
 export function createApp(options = {}) {

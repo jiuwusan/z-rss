@@ -2,6 +2,7 @@ node_modules
 tests
 support
 coverage
+data/
 .env
 .env.*
 *.log

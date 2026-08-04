@@ -225,6 +225,43 @@ test('持久化规则要求非空字符串 ID 和字符串 mustExclude', async (
   }
 });
 
+test('持久化规则集合拒绝超过 100 条规则', async () => {
+  const fixture = await createServiceFixture();
+
+  try {
+    await fixture.repository.saveRules(Array.from({ length: 101 }, (_, index) => ({
+      id: `rule-${index}`,
+      mustInclude: '2160p',
+      mustExclude: '',
+    })));
+
+    await assert.rejects(
+      () => fixture.service.listRules(),
+      (error) => error.constructor === Error && error.status === undefined,
+    );
+  } finally {
+    await rm(fixture.dataDirectory, { recursive: true, force: true });
+  }
+});
+
+test('持久化规则集合拒绝重复 ID', async () => {
+  const fixture = await createServiceFixture();
+
+  try {
+    await fixture.repository.saveRules([
+      { id: 'duplicate', mustInclude: '2160p', mustExclude: '' },
+      { id: 'duplicate', mustInclude: '1080p', mustExclude: '' },
+    ]);
+
+    await assert.rejects(
+      () => fixture.service.listRules(),
+      (error) => error.constructor === Error && error.status === undefined,
+    );
+  } finally {
+    await rm(fixture.dataDirectory, { recursive: true, force: true });
+  }
+});
+
 test('分流规则按日期排序后匹配条目标题', () => {
   const items = [
     { title: '2160p DV', pubDate: '2026-03-02T00:00:00Z' },
@@ -356,6 +393,43 @@ test('订阅生成拒绝被选中条目的非字符串原始 XML', async () => {
     ]);
 
     for (const invalidXml of [undefined, null, 1, { item: true }]) {
+      await fixture.repository.saveItems([
+        {
+          platform: 'A',
+          title: '2160p 无效 XML',
+          pubDate: '2026-03-02T00:00:00Z',
+          xml: invalidXml,
+        },
+      ]);
+
+      await assert.rejects(
+        () => fixture.service.buildSubscription('matched'),
+        (error) =>
+          error.constructor === Error
+          && error.status === undefined
+          && error.message === 'RSS 条目原始 XML 无效',
+      );
+    }
+  } finally {
+    await rm(fixture.dataDirectory, { recursive: true, force: true });
+  }
+});
+
+test('订阅生成拒绝不是单个完整 item 的字符串原始 XML', async () => {
+  const fixture = await createServiceFixture();
+  const invalidItemXmlValues = [
+    '<item><title>2160p</item>',
+    '<entry><title>2160p</title></entry>',
+    '<item><title>2160p A</title></item><item><title>2160p B</title></item>',
+    '<item><title>2160p</title></item>附加内容',
+  ];
+
+  try {
+    await fixture.repository.saveRules([
+      { id: 'rule-1', mustInclude: '2160p', mustExclude: '' },
+    ]);
+
+    for (const invalidXml of invalidItemXmlValues) {
       await fixture.repository.saveItems([
         {
           platform: 'A',

@@ -109,6 +109,54 @@ test('规则 CRUD 驱动匹配和未匹配订阅且只读取缓存', async () =>
   }
 });
 
+test('默认应用装配让规则 CRUD 与订阅服务共享注入的 repository', async () => {
+  const dataDirectory = await mkdtemp(path.join(tmpdir(), 'z-rss-shared-repository-'));
+  const repository = createRssRepository({ dataDirectory });
+  let server;
+
+  try {
+    await repository.saveItems([
+      {
+        platform: 'A',
+        title: '2160p WEB-DL',
+        pubDate: '2026-03-02T00:00:00Z',
+        xml: '<item><title>2160p WEB-DL</title></item>',
+      },
+    ]);
+    await repository.saveRules([
+      { id: 'seed-rule', mustInclude: '1080p', mustExclude: '' },
+    ]);
+    server = await startTestServer(createApp({ repository }));
+
+    const initiallyListed = await request(server).get('/rss/rules');
+    assert.equal(initiallyListed.status, 200);
+    assert.deepEqual(initiallyListed.body.data, [
+      { id: 'seed-rule', mustInclude: '1080p', mustExclude: '' },
+    ]);
+
+    const created = await request(server)
+      .post('/rss/rules')
+      .send({ mustInclude: '2160p', mustExclude: 'DV' });
+    assert.equal(created.status, 201);
+
+    const updated = await request(server)
+      .put('/rss/rules/seed-rule')
+      .send({ mustInclude: '720p', mustExclude: '' });
+    assert.equal(updated.status, 200);
+
+    const deleted = await request(server).delete('/rss/rules/seed-rule');
+    assert.equal(deleted.status, 200);
+
+    const matched = await request(server).get('/rss/subscriptions/matched');
+    assert.equal(matched.status, 200);
+    assert.match(matched.text, /2160p WEB-DL/);
+    assert.deepEqual(await repository.listRules(), [created.body.data]);
+  } finally {
+    if (server) await stopTestServer(server);
+    await rm(dataDirectory, { recursive: true, force: true });
+  }
+});
+
 test('规则接口返回统一的 400 和 404 JSON 错误', async () => {
   const fixture = await createApiFixture();
 
@@ -133,6 +181,38 @@ test('规则接口返回统一的 400 和 404 JSON 错误', async () => {
       .delete('/rss/rules/missing');
     assert.equal(missingDelete.status, 404);
     assert.equal(missingDelete.body.code, 404);
+  } finally {
+    await destroyApiFixture(fixture);
+  }
+});
+
+test('重复规则 ID 使查询、修改和删除返回安全 500 且不改写数据', async () => {
+  const fixture = await createApiFixture();
+  const duplicateRules = [
+    { id: 'duplicate', mustInclude: '2160p', mustExclude: '' },
+    { id: 'duplicate', mustInclude: '1080p', mustExclude: '' },
+  ];
+
+  try {
+    await fixture.repository.saveRules(duplicateRules);
+
+    const responses = [
+      await request(fixture.server).get('/rss/rules'),
+      await request(fixture.server)
+        .put('/rss/rules/duplicate')
+        .send({ mustInclude: '720p', mustExclude: '' }),
+      await request(fixture.server).delete('/rss/rules/duplicate'),
+    ];
+
+    for (const response of responses) {
+      assert.equal(response.status, 500);
+      assert.deepEqual(response.body, {
+        code: 500,
+        message: '服务器内部错误',
+        data: null,
+      });
+    }
+    assert.deepEqual(await fixture.repository.listRules(), duplicateRules);
   } finally {
     await destroyApiFixture(fixture);
   }
@@ -181,5 +261,39 @@ test('订阅生成失败返回统一的 500 JSON 响应', async () => {
     }
   } finally {
     await stopTestServer(server);
+  }
+});
+
+test('坏缓存中的畸形 item XML 返回统一的安全 500 JSON', async () => {
+  const fixture = await createApiFixture();
+
+  try {
+    await fixture.repository.saveRules([
+      { id: 'rule-1', mustInclude: '2160p', mustExclude: '' },
+    ]);
+    await fixture.repository.saveItems([
+      {
+        platform: 'A',
+        title: '2160p 无效 XML',
+        pubDate: '2026-03-02T00:00:00Z',
+        xml: '<item><title>2160p</item>',
+      },
+    ]);
+
+    const response = await request(fixture.server)
+      .get('/rss/subscriptions/matched');
+
+    assert.equal(response.status, 500);
+    assert.match(
+      response.headers['content-type'],
+      /^application\/json; charset=utf-8$/,
+    );
+    assert.deepEqual(response.body, {
+      code: 500,
+      message: '服务器内部错误',
+      data: null,
+    });
+  } finally {
+    await destroyApiFixture(fixture);
   }
 });

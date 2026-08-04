@@ -7,12 +7,12 @@ import { createRssRouter } from './rss.route.js';
 
 /**
  * 创建应用总路由。
- * @param {{ rssService?: object, subscriptionService?: object }} options 可注入依赖
+ * @param {{ repository?: object, rssService?: object, subscriptionService?: object }} options 可注入依赖
  * @returns {Router}
  */
 export function createRouter(options = {}) {
   const router = new Router();
-  const repository = createRssRepository();
+  const repository = options.repository ?? createRssRepository();
   const rssService = options.rssService ?? createRssService({ repository });
   const subscriptionService = options.subscriptionService
     ?? createRssSubscriptionService({ repository });
