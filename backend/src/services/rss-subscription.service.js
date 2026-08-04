@@ -26,17 +26,23 @@ function validatePattern(value, fieldName, { required }) {
   return value;
 }
 
-function validateRuleInput(input = {}) {
+function validateRuleInput(input = {}, { allowMissingMustExclude = true } = {}) {
+  const mustExclude = allowMissingMustExclude && input?.mustExclude === undefined
+    ? ''
+    : input?.mustExclude;
   return {
     mustInclude: validatePattern(input?.mustInclude, 'mustInclude', { required: true }),
-    mustExclude: validatePattern(input?.mustExclude, 'mustExclude', { required: false }),
+    mustExclude: validatePattern(mustExclude, 'mustExclude', { required: false }),
   };
 }
 
 function validateStoredRule(rule) {
   try {
-    const validatedRule = validateRuleInput(rule);
-    return { id: rule?.id, ...validatedRule };
+    if (typeof rule?.id !== 'string' || rule.id.trim() === '') {
+      throw new TypeError('id 必须是非空字符串');
+    }
+    const validatedRule = validateRuleInput(rule, { allowMissingMustExclude: false });
+    return { id: rule.id, ...validatedRule };
   } catch {
     throw new Error('持久化 RSS 分流规则无效');
   }
@@ -57,7 +63,7 @@ export function partitionItems(items, rules) {
   const unmatched = [];
   for (const item of sortRssItems(items)) {
     const title = typeof item.title === 'string' ? item.title : '';
-    const isMatched = patterns.some(({ include, exclude }) =>
+    const isMatched = title !== '' && patterns.some(({ include, exclude }) =>
       include.test(title) && (!exclude || !exclude.test(title))
     );
     (isMatched ? matched : unmatched).push(item);

@@ -47,6 +47,23 @@ test('规则 CRUD 保存必含和必不含正则', async () => {
   }
 });
 
+test('创建和修改规则时省略 mustExclude 会规范化为空字符串', async () => {
+  const fixture = await createServiceFixture();
+
+  try {
+    const created = await fixture.service.createRule({ mustInclude: '2160p' });
+    assert.equal(created.mustExclude, '');
+
+    const updated = await fixture.service.updateRule(created.id, {
+      mustInclude: '1080p',
+    });
+    assert.equal(updated.mustExclude, '');
+    assert.deepEqual(await fixture.service.listRules(), [updated]);
+  } finally {
+    await rm(fixture.dataDirectory, { recursive: true, force: true });
+  }
+});
+
 test('规则 CRUD 拒绝无效输入与不存在 ID', async () => {
   const fixture = await createServiceFixture();
 
@@ -146,6 +163,28 @@ test('无效持久化规则会抛出未标记 HTTP 状态的错误', async () =>
   }
 });
 
+test('持久化规则要求非空字符串 ID 和字符串 mustExclude', async () => {
+  const fixture = await createServiceFixture();
+  const invalidRules = [
+    { id: 'rule-1', mustInclude: '2160p' },
+    { mustInclude: '2160p', mustExclude: '' },
+    { id: '', mustInclude: '2160p', mustExclude: '' },
+    { id: 1, mustInclude: '2160p', mustExclude: '' },
+  ];
+
+  try {
+    for (const rule of invalidRules) {
+      await fixture.repository.saveRules([rule]);
+      await assert.rejects(
+        () => fixture.service.listRules(),
+        (error) => error.status === undefined,
+      );
+    }
+  } finally {
+    await rm(fixture.dataDirectory, { recursive: true, force: true });
+  }
+});
+
 test('分流规则按日期排序后匹配条目标题', () => {
   const items = [
     { title: '2160p DV', pubDate: '2026-03-02T00:00:00Z' },
@@ -168,6 +207,22 @@ test('分流规则按日期排序后匹配条目标题', () => {
   ]);
   assert.deepEqual(partitionItems(items, []).matched, []);
   assert.equal(partitionItems(items, []).unmatched.length, items.length);
+});
+
+test('空标题和非字符串标题不会被可匹配空串的正则命中', () => {
+  const items = [
+    { title: '', pubDate: '2026-03-03T00:00:00Z' },
+    { title: null, pubDate: '2026-03-02T00:00:00Z' },
+    { pubDate: '2026-03-01T00:00:00Z' },
+  ];
+
+  for (const mustInclude of ['.*', '^$', 'a*']) {
+    const result = partitionItems(items, [
+      { id: '1', mustInclude, mustExclude: '' },
+    ]);
+    assert.deepEqual(result.matched, []);
+    assert.deepEqual(result.unmatched, items);
+  }
 });
 
 test('RSS 条目排序保持同日期和无效日期的原始相对顺序', () => {
