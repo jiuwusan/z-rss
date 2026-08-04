@@ -13,21 +13,22 @@ import { startTestServer, stopTestServer } from '../support/http-server.helper.j
 async function createApiFixture() {
   const dataDirectory = await mkdtemp(path.join(tmpdir(), 'z-rss-subscription-api-'));
   const repository = createRssRepository({ dataDirectory });
-  let fetchCalls = 0;
-  const rssService = createRssService({
-    repository,
-    fetchImpl: async () => {
-      fetchCalls += 1;
-      throw new Error('订阅读取不应发起外部请求');
-    },
-  });
+  const originalSaveItems = repository.saveItems;
+  let saveItemsCalls = 0;
+  repository.saveItems = (items) => {
+    saveItemsCalls += 1;
+    return originalSaveItems(items);
+  };
+  const rssService = createRssService({ repository });
   const subscriptionService = createRssSubscriptionService({ repository });
-  const server = await startTestServer(createApp({ rssService, subscriptionService }));
+  const server = await startTestServer(
+    createApp({ rssService, subscriptionService }),
+  );
   return {
     dataDirectory,
     repository,
     server,
-    getFetchCalls: () => fetchCalls,
+    getSaveItemsCalls: () => saveItemsCalls,
   };
 }
 
@@ -37,9 +38,16 @@ async function destroyApiFixture(fixture) {
 }
 
 test('规则 CRUD 驱动匹配和未匹配订阅且只读取缓存', async () => {
-  const fixture = await createApiFixture();
+  const originalFetch = globalThis.fetch;
+  let fetchCalls = 0;
+  let fixture;
+  globalThis.fetch = async () => {
+    fetchCalls += 1;
+    throw new Error('订阅读取不应发起外部请求');
+  };
 
   try {
+    fixture = await createApiFixture();
     await fixture.repository.saveItems([
       {
         platform: 'A',
@@ -54,6 +62,7 @@ test('规则 CRUD 驱动匹配和未匹配订阅且只读取缓存', async () =>
         xml: '<item><title>2160P WEB-DL</title><enclosure url="https://example.com/download?passkey=secret"/></item>',
       },
     ]);
+    const saveItemsCallsBeforeRequests = fixture.getSaveItemsCalls();
 
     const created = await request(fixture.server)
       .post('/rss/rules')
@@ -78,7 +87,8 @@ test('规则 CRUD 驱动匹配和未匹配订阅且只读取缓存', async () =>
     assert.equal(unmatched.headers['cache-control'], 'no-store');
     assert.match(unmatched.text, /2160p DV/);
     assert.doesNotMatch(unmatched.text, /2160P WEB-DL/);
-    assert.equal(fixture.getFetchCalls(), 0);
+    assert.equal(fetchCalls, 0);
+    assert.equal(fixture.getSaveItemsCalls(), saveItemsCallsBeforeRequests);
 
     const updated = await request(fixture.server)
       .put(`/rss/rules/${created.body.data.id}`)
@@ -91,7 +101,11 @@ test('规则 CRUD 驱动匹配和未匹配订阅且只读取缓存', async () =>
     assert.equal(deleted.status, 200);
     assert.equal(deleted.body.data.id, created.body.data.id);
   } finally {
-    await destroyApiFixture(fixture);
+    try {
+      if (fixture) await destroyApiFixture(fixture);
+    } finally {
+      globalThis.fetch = originalFetch;
+    }
   }
 });
 
@@ -136,5 +150,36 @@ test('带 .xml 后缀的订阅路径不存在', async () => {
     }
   } finally {
     await destroyApiFixture(fixture);
+  }
+});
+
+test('订阅生成失败返回统一的 500 JSON 响应', async () => {
+  const server = await startTestServer(createApp({
+    rssService: {},
+    subscriptionService: {
+      async buildSubscription() {
+        throw new Error('母版读取失败');
+      },
+    },
+  }));
+
+  try {
+    for (const kind of ['matched', 'unmatched']) {
+      const response = await request(server).get(`/rss/subscriptions/${kind}`);
+
+      assert.equal(response.status, 500);
+      assert.match(
+        response.headers['content-type'],
+        /^application\/json; charset=utf-8$/,
+      );
+      assert.equal(response.headers['cache-control'], undefined);
+      assert.deepEqual(response.body, {
+        code: 500,
+        message: '服务器内部错误',
+        data: null,
+      });
+    }
+  } finally {
+    await stopTestServer(server);
   }
 });

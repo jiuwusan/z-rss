@@ -27,14 +27,16 @@ export function createRssSubscriptionController({ subscriptionService }) {
       );
     },
     async getMatchedSubscription(ctx) {
+      const xml = await subscriptionService.buildSubscription('matched');
       ctx.set('Content-Type', 'text/xml; charset=utf-8');
       ctx.set('Cache-Control', 'no-store');
-      ctx.body = await subscriptionService.buildSubscription('matched');
+      ctx.body = xml;
     },
     async getUnmatchedSubscription(ctx) {
+      const xml = await subscriptionService.buildSubscription('unmatched');
       ctx.set('Content-Type', 'text/xml; charset=utf-8');
       ctx.set('Cache-Control', 'no-store');
-      ctx.body = await subscriptionService.buildSubscription('unmatched');
+      ctx.body = xml;
     },
   };
 }

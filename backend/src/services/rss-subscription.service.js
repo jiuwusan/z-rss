@@ -156,8 +156,13 @@ export function createRssSubscriptionService({
       throw new Error('RSS 订阅母版占位符无效');
     }
     const partitioned = partitionItems(items, rules);
-    const itemXml = partitioned[kind].map((item) => item.xml).join('\n');
-    return template.replace(ITEM_PLACEHOLDER, itemXml);
+    const itemXml = partitioned[kind].map((item) => {
+      if (typeof item.xml !== 'string') {
+        throw new Error('RSS 条目原始 XML 无效');
+      }
+      return item.xml;
+    }).join('\n');
+    return template.replace(ITEM_PLACEHOLDER, () => itemXml);
   }
 
   return {

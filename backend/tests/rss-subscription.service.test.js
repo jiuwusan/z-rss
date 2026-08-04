@@ -10,6 +10,7 @@ import {
 } from '../src/services/rss-subscription.service.js';
 import { sortRssItems } from '../src/utils/rss-item.util.js';
 
+const ITEM_PLACEHOLDER = '<!-- 在这里插入 item 标签内容 -->';
 const TEMPLATE_XML = `<?xml version="1.0" encoding="utf-8"?>
 <rss version="2.0">
     <channel>
@@ -42,7 +43,7 @@ const TEMPLATE_XML = `<?xml version="1.0" encoding="utf-8"?>
             <height>100</height>
             <description>Cloud Jiuwusan Torrents</description>
         </image>
-        <!-- 在这里插入 item 标签内容 -->
+        ${ITEM_PLACEHOLDER}
     </channel>
 </rss>`;
 
@@ -314,6 +315,69 @@ test('订阅生成保留原始 item XML 并按规则输出匹配条目', async (
   }
 });
 
+test('订阅生成完整保留替换标记、实体和 CDATA 中的原始 XML', async () => {
+  const fixture = await createServiceFixture();
+  const originalItemXml = [
+    "<item><title><![CDATA[$& $$ $` $']]></title>",
+    '<description>Tom &amp; Jerry</description>',
+    '<enclosure url="https://example.com/a?x=1&amp;y=2"/></item>',
+  ].join('');
+
+  try {
+    await fixture.repository.saveItems([
+      {
+        platform: 'A',
+        title: '2160p 特殊标记',
+        pubDate: '2026-03-02T00:00:00Z',
+        xml: originalItemXml,
+      },
+    ]);
+    await fixture.repository.saveRules([
+      { id: 'rule-1', mustInclude: '2160p', mustExclude: '' },
+    ]);
+
+    const xml = await fixture.service.buildSubscription('matched');
+
+    assert.equal(
+      xml,
+      TEMPLATE_XML.replace(ITEM_PLACEHOLDER, () => originalItemXml),
+    );
+  } finally {
+    await rm(fixture.dataDirectory, { recursive: true, force: true });
+  }
+});
+
+test('订阅生成拒绝被选中条目的非字符串原始 XML', async () => {
+  const fixture = await createServiceFixture();
+
+  try {
+    await fixture.repository.saveRules([
+      { id: 'rule-1', mustInclude: '2160p', mustExclude: '' },
+    ]);
+
+    for (const invalidXml of [undefined, null, 1, { item: true }]) {
+      await fixture.repository.saveItems([
+        {
+          platform: 'A',
+          title: '2160p 无效 XML',
+          pubDate: '2026-03-02T00:00:00Z',
+          xml: invalidXml,
+        },
+      ]);
+
+      await assert.rejects(
+        () => fixture.service.buildSubscription('matched'),
+        (error) =>
+          error.constructor === Error
+          && error.status === undefined
+          && error.message === 'RSS 条目原始 XML 无效',
+      );
+    }
+  } finally {
+    await rm(fixture.dataDirectory, { recursive: true, force: true });
+  }
+});
+
 test('空命中订阅保留 RSS 和 channel 母版且不输出 item', async () => {
   const fixture = await createServiceFixture();
 
@@ -347,6 +411,25 @@ test('订阅母版缺少唯一占位符时拒绝生成', async () => {
     await writeFile(
       fixture.templatePath,
       '<rss><channel></channel></rss>',
+      'utf8',
+    );
+
+    await assert.rejects(
+      () => fixture.service.buildSubscription('matched'),
+      /RSS 订阅母版占位符无效/,
+    );
+  } finally {
+    await rm(fixture.dataDirectory, { recursive: true, force: true });
+  }
+});
+
+test('订阅母版包含多个占位符时拒绝生成', async () => {
+  const fixture = await createServiceFixture();
+
+  try {
+    await writeFile(
+      fixture.templatePath,
+      `${TEMPLATE_XML}\n${ITEM_PLACEHOLDER}`,
       'utf8',
     );
 
