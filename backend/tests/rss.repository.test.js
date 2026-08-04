@@ -12,6 +12,7 @@ test('缺少数据文件时初始化空数组并支持再次读取', async () =>
   try {
     assert.deepEqual(await repository.listPlatforms(), []);
     assert.deepEqual(await repository.listItems(), []);
+    assert.deepEqual(await repository.listRules(), []);
 
     await repository.savePlatforms([
       { platform: 'HDSKY', rss: 'https://example.com/rss.xml' },
@@ -25,12 +26,16 @@ test('缺少数据文件时初始化空数组并支持再次读取', async () =>
         xml: '<item />',
       },
     ]);
+    await repository.saveRules([
+      { id: 'rule-1', mustInclude: '2160p', mustExclude: 'DV' },
+    ]);
 
     assert.equal((await repository.listPlatforms())[0].platform, 'HDSKY');
     assert.equal((await repository.listItems())[0].title, '标题');
+    assert.equal((await repository.listRules())[0].id, 'rule-1');
     assert.deepEqual(
       (await readdir(dataDirectory)).sort(),
-      ['platforms.json', 'rss-cache.json'],
+      ['platforms.json', 'rss-cache.json', 'rss-rules.json'],
     );
   } finally {
     await rm(dataDirectory, { recursive: true, force: true });
@@ -44,6 +49,17 @@ test('损坏 JSON 会抛错且不会被静默覆盖', async () => {
   try {
     await writeFile(path.join(dataDirectory, 'platforms.json'), '{bad', 'utf8');
     await assert.rejects(() => repository.listPlatforms(), SyntaxError);
+  } finally {
+    await rm(dataDirectory, { recursive: true, force: true });
+  }
+});
+
+test('损坏的规则 JSON 会抛错且不会被静默覆盖', async () => {
+  const dataDirectory = await mkdtemp(path.join(tmpdir(), 'z-rss-repository-'));
+  const repository = createRssRepository({ dataDirectory });
+  try {
+    await writeFile(path.join(dataDirectory, 'rss-rules.json'), '{bad', 'utf8');
+    await assert.rejects(() => repository.listRules(), SyntaxError);
   } finally {
     await rm(dataDirectory, { recursive: true, force: true });
   }

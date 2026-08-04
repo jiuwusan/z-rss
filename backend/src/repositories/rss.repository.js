@@ -68,6 +68,7 @@ export function createRssRepository({
 } = {}) {
   const platformsPath = path.join(dataDirectory, 'platforms.json');
   const cachePath = path.join(dataDirectory, 'rss-cache.json');
+  const rulesPath = path.join(dataDirectory, 'rss-rules.json');
   const enqueueWrite = getWriteQueue(dataDirectory);
 
   return {
@@ -78,6 +79,10 @@ export function createRssRepository({
     listItems: () => readJsonArray(cachePath, enqueueWrite),
     saveItems: (items) => enqueueWrite(
       () => writeJsonAtomically(cachePath, items),
+    ),
+    listRules: () => readJsonArray(rulesPath, enqueueWrite),
+    saveRules: (rules) => enqueueWrite(
+      () => writeJsonAtomically(rulesPath, rules),
     ),
   };
 }
