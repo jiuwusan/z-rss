@@ -1,6 +1,7 @@
 import { parseRssItems } from '../parsers/rss.parser.js';
 import { createRssRepository } from '../repositories/rss.repository.js';
 import { createHttpError } from '../utils/http-error.util.js';
+import { sortRssItems } from '../utils/rss-item.util.js';
 
 let writeQueue = Promise.resolve();
 let isRefreshing = false;
@@ -211,16 +212,7 @@ export function createRssService({
       pubDate: item.pubDate,
       xml: item.xml,
     }));
-    return publicItems.sort((left, right) => {
-      const leftTimestamp = Date.parse(left.pubDate);
-      const rightTimestamp = Date.parse(right.pubDate);
-      const isLeftValid = Number.isFinite(leftTimestamp);
-      const isRightValid = Number.isFinite(rightTimestamp);
-      if (isLeftValid && isRightValid) return rightTimestamp - leftTimestamp;
-      if (isLeftValid) return -1;
-      if (isRightValid) return 1;
-      return 0;
-    });
+    return sortRssItems(publicItems);
   }
 
   return {
